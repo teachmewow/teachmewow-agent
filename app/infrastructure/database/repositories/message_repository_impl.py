@@ -2,7 +2,7 @@
 PostgreSQL implementation of MessageRepository.
 """
 
-import json
+from datetime import datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -119,3 +119,28 @@ class MessageRepositoryImpl:
             delete(MessageModel).where(MessageModel.thread_id == thread_id)
         )
         return result.rowcount
+
+    async def get_up_to_timestamp(
+        self, thread_id: str, up_to: datetime
+    ) -> list[Message]:
+        """
+        Get all messages for a thread up to and including a specific timestamp.
+
+        Args:
+            thread_id: The thread ID
+            up_to: Timestamp upper bound (inclusive)
+
+        Returns:
+            List of messages ordered by timestamp ascending
+        """
+        query = (
+            select(MessageModel)
+            .where(
+                MessageModel.thread_id == thread_id,
+                MessageModel.timestamp <= up_to,
+            )
+            .order_by(MessageModel.timestamp.asc())
+        )
+
+        result = await self.session.execute(query)
+        return [self._to_entity(model) for model in result.scalars().all()]

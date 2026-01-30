@@ -3,10 +3,14 @@ Message entity representing a chat message.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
+from datetime import datetime, timezone
 
 from app.domain.value_objects import MessageRole
+
+
+def _utc_now() -> datetime:
+    """Get current UTC datetime (timezone-aware)."""
+    return datetime.now(timezone.utc)
 
 
 @dataclass
@@ -40,7 +44,7 @@ class Message:
     thread_id: str
     role: MessageRole
     content: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=_utc_now)
     tool_calls: list[ToolCall] | None = None
     tool_call_id: str | None = None
     tool_result: str | None = None

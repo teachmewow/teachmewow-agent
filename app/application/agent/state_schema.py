@@ -18,19 +18,19 @@ class AgentState(BaseModel):
 
     Attributes:
         messages: Conversation history (uses add_messages reducer)
-        thread_id: ID of the conversation thread
+        thread_id: ID of the conversation thread (format: uuid_userId)
         user_id: ID of the user
-        wow_class: Optional WoW class context
-        wow_spec: Optional WoW spec context
-        wow_role: Optional WoW role context (tank, healer, dps)
+        wow_class: WoW class context (required)
+        wow_spec: WoW spec context (required)
+        wow_role: WoW role context (required: tank, healer, dps)
     """
 
     messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
-    thread_id: str | None = None
-    user_id: str | None = None
-    wow_class: str | None = None
-    wow_spec: str | None = None
-    wow_role: str | None = None
+    thread_id: str
+    user_id: str
+    wow_class: str
+    wow_spec: str
+    wow_role: str
 
     class Config:
         arbitrary_types_allowed = True

@@ -2,7 +2,7 @@
 PostgreSQL implementation of ThreadRepository.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -24,10 +24,10 @@ class ThreadRepositoryImpl:
         return Thread(
             id=model.id,
             user_id=model.user_id,
-            title=model.title,
-            wow_class=WowClass(model.wow_class) if model.wow_class else None,
-            wow_spec=WowSpec(model.wow_spec) if model.wow_spec else None,
+            wow_class=WowClass(model.wow_class),
+            wow_spec=WowSpec(model.wow_spec),
             wow_role=model.wow_role,
+            title=model.title,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -37,10 +37,10 @@ class ThreadRepositoryImpl:
         return ThreadModel(
             id=entity.id,
             user_id=entity.user_id,
-            title=entity.title,
-            wow_class=entity.wow_class.value if entity.wow_class else None,
-            wow_spec=entity.wow_spec.value if entity.wow_spec else None,
+            wow_class=entity.wow_class.value,
+            wow_spec=entity.wow_spec.value,
             wow_role=entity.wow_role,
+            title=entity.title,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
@@ -87,10 +87,10 @@ class ThreadRepositoryImpl:
             raise ValueError(f"Thread {thread.id} not found")
 
         model.title = thread.title
-        model.wow_class = thread.wow_class.value if thread.wow_class else None
-        model.wow_spec = thread.wow_spec.value if thread.wow_spec else None
+        model.wow_class = thread.wow_class.value
+        model.wow_spec = thread.wow_spec.value
         model.wow_role = thread.wow_role
-        model.updated_at = datetime.utcnow()
+        model.updated_at = datetime.now(timezone.utc)
 
         await self.session.flush()
         await self.session.refresh(model)
@@ -116,10 +116,10 @@ class ThreadRepositoryImpl:
             .values(
                 id=thread.id,
                 user_id=thread.user_id,
-                title=thread.title,
-                wow_class=thread.wow_class.value if thread.wow_class else None,
-                wow_spec=thread.wow_spec.value if thread.wow_spec else None,
+                wow_class=thread.wow_class.value,
+                wow_spec=thread.wow_spec.value,
                 wow_role=thread.wow_role,
+                title=thread.title,
                 created_at=thread.created_at,
                 updated_at=thread.updated_at,
             )

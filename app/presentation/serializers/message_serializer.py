@@ -56,10 +56,10 @@ def serialize_thread(thread: Thread) -> ThreadResponse:
     return ThreadResponse(
         id=thread.id,
         user_id=thread.user_id,
-        title=thread.title,
-        wow_class=thread.wow_class.value if thread.wow_class else None,
-        wow_spec=thread.wow_spec.value if thread.wow_spec else None,
+        wow_class=thread.wow_class.value,
+        wow_spec=thread.wow_spec.value,
         wow_role=thread.wow_role,
+        title=thread.title,
         created_at=thread.created_at.isoformat(),
         updated_at=thread.updated_at.isoformat(),
     )

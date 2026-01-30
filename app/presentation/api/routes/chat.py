@@ -3,7 +3,7 @@ Chat API routes.
 """
 
 from fastapi import APIRouter
-from sse_starlette.sse import EventSourceResponse
+from fastapi.responses import StreamingResponse
 
 from app.presentation.api.dependencies import ChatServiceDep
 from app.presentation.schemas import SendMessageRequest
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/agent", tags=["chat"])
 async def send_message(
     request: SendMessageRequest,
     chat_service: ChatServiceDep,
-) -> EventSourceResponse:
+) -> StreamingResponse:
     """
     Send a message and stream the response.
 
@@ -29,16 +29,19 @@ async def send_message(
     - done: Stream complete
     - error: An error occurred
     """
-
-    async def event_generator():
-        async for event in chat_service.process_message(
+    return StreamingResponse(
+        chat_service.process_message(
             thread_id=request.thread_id,
             user_id=request.user_id,
             input_text=request.input,
             wow_class=request.wow_class,
             wow_spec=request.spec,
             wow_role=request.role,
-        ):
-            yield event
-
-    return EventSourceResponse(event_generator())
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

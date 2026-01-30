@@ -2,6 +2,7 @@
 Message repository interface.
 """
 
+from datetime import datetime
 from typing import Protocol
 
 from app.domain.entities import Message
@@ -74,5 +75,23 @@ class MessageRepository(Protocol):
 
         Returns:
             Number of messages deleted
+        """
+        ...
+
+    async def get_up_to_timestamp(
+        self, thread_id: str, up_to: datetime
+    ) -> list[Message]:
+        """
+        Get all messages for a thread up to and including a specific timestamp.
+
+        This method is useful for fetching history after saving a new message,
+        ensuring we include the just-saved message without duplicates.
+
+        Args:
+            thread_id: The thread ID
+            up_to: Timestamp upper bound (inclusive)
+
+        Returns:
+            List of messages ordered by timestamp ascending
         """
         ...

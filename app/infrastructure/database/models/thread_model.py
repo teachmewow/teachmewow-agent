@@ -17,10 +17,10 @@ class ThreadModel(Base):
 
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    wow_class: Mapped[str] = mapped_column(String(50), nullable=False)
+    wow_spec: Mapped[str] = mapped_column(String(50), nullable=False)
+    wow_role: Mapped[str] = mapped_column(String(20), nullable=False)
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    wow_class: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    wow_spec: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    wow_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
