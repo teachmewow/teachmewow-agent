@@ -1,3 +1,5 @@
+import json
+
 from langgraph.config import get_stream_writer
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
@@ -42,7 +44,30 @@ class ToolNode:
         if not messages:
             raise ValueError("No messages found in input state")
         last_message = messages[-1]
-        return list(getattr(last_message, "tool_calls", []) or [])
+        raw_calls = list(getattr(last_message, "tool_calls", []) or [])
+        return [self._normalize_tool_call(call) for call in raw_calls]
+
+    def _normalize_tool_call(self, tool_call: object) -> ToolCall:
+        """Normalize tool call into ToolCall dataclass."""
+        if isinstance(tool_call, ToolCall):
+            return tool_call
+        if isinstance(tool_call, dict):
+            call_id = tool_call.get("id", "")
+            name = tool_call.get("name", "")
+            args = tool_call.get("args", {})
+            return ToolCall(
+                id=call_id,
+                name=name,
+                arguments=json.dumps(args),
+            )
+        call_id = getattr(tool_call, "id", "")
+        name = getattr(tool_call, "name", "")
+        args = getattr(tool_call, "args", {})
+        return ToolCall(
+            id=call_id,
+            name=name,
+            arguments=json.dumps(args),
+        )
 
     async def _run_tool(self, tool_call: ToolCall, stream_writer) -> ToolMessage:
         """Run the tool and return the result."""

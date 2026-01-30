@@ -40,15 +40,31 @@ class DatabaseObserver:
         """
         Called when a stream event is processed.
 
-        Currently a no-op - we wait for the complete response.
-        Future enhancement: could save tool calls/results as they happen.
+        Persists tool results as they happen to ensure tool messages
+        are available in history for subsequent LLM calls.
 
         Args:
             event: The stream event that was processed
         """
-        # For now, we don't do anything on individual events
-        # Could be extended to save tool calls/results in real-time
-        pass
+        if event.event != "on_tool_end":
+            return
+
+        tool_call_id = event.run_id or ""
+        if not tool_call_id:
+            return
+
+        output = event.data.get("output")
+        content = json.dumps(output) if isinstance(output, (dict, list)) else str(output)
+
+        tool_message = Message(
+            id=f"tool_{tool_call_id}",
+            thread_id=self.thread_id,
+            role=MessageRole.TOOL,
+            content=content,
+            tool_call_id=tool_call_id,
+            tool_result=content,
+        )
+        await self.message_repository.save(tool_message)
 
     async def on_node_complete(self, node: str, messages: list[BaseMessage]) -> None:
         """

@@ -28,8 +28,10 @@ def create_agent_graph(llm_client: LLMClient, tools: list[BaseTool]) -> StateGra
     # Create the graph
     graph = StateGraph(AgentState)
 
+    # Bind tools to the model so it can emit tool calls
+    model = llm_client.model.bind_tools(tools) if tools else llm_client.model
     # Add nodes
-    graph.add_node("agent", LLMNode(llm_client.model))
+    graph.add_node("agent", LLMNode(model))
     graph.add_node("tools", ToolNode(tools))
 
     # Set entry point: START -> agent
