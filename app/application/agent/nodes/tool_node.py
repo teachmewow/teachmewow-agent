@@ -33,7 +33,7 @@ class ToolNode:
 
         outputs = []
         for tool_call in tool_calls:
-            tool_result = await self._run_tool(tool_call, stream_writer)
+            tool_result = await self._run_tool(tool_call, state, stream_writer)
             outputs.append(tool_result)
         
         return {"messages": outputs}
@@ -69,10 +69,11 @@ class ToolNode:
             arguments=json.dumps(args),
         )
 
-    async def _run_tool(self, tool_call: ToolCall, stream_writer) -> ToolMessage:
+    async def _run_tool(self, tool_call: ToolCall, state: AgentState, stream_writer) -> ToolMessage:
         """Run the tool and return the result."""
         try:
-            tool_result = await self.all_tools_by_name[tool_call.name].arun(tool_call.arguments)
+            injected_args = self._inject_context(tool_call.arguments, state)
+            tool_result = await self.all_tools_by_name[tool_call.name].arun(injected_args)
             stream_writer(
                 {
                     "kind": "tool_result", 
@@ -105,3 +106,18 @@ class ToolNode:
                 name=tool_call.name,
                 tool_call_id=tool_call.id
             )
+
+    def _inject_context(self, arguments: str, state: AgentState) -> str:
+        """Inject class/spec/role into tool call arguments."""
+        try:
+            parsed = json.loads(arguments) if arguments else {}
+        except json.JSONDecodeError:
+            return arguments
+
+        if not isinstance(parsed, dict):
+            return arguments
+
+        parsed.setdefault("wow_class", state.wow_class)
+        parsed.setdefault("wow_spec", state.wow_spec)
+        parsed.setdefault("wow_role", state.wow_role)
+        return json.dumps(parsed)

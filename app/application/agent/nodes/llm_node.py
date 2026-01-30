@@ -1,19 +1,11 @@
 from app.application.agent.state_schema import AgentState
+from app.application.agent.prompts.system_prompt import AGENT_SYSTEM_PROMPT
 from langchain_core.messages import BaseMessageChunk, SystemMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.runnables import RunnableConfig
 from collections.abc import AsyncGenerator
 from langchain_core.messages import BaseMessage
 
-
-AGENT_SYSTEM_PROMPT = """
-You are an expert World of Warcraft coach. You help players improve their gameplay by providing advice on:
-- Class and specialization mechanics
-- Optimal rotations and ability usage
-- Gear choices and stat priorities
-- Raid and dungeon strategies
-- PvP tactics and arena compositions
-"""
 
 class LLMNode:
     def __init__(self, model: BaseChatModel) -> None:
