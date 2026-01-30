@@ -3,7 +3,6 @@ SSE Orchestrator for managing graph execution and streaming with debouncing.
 """
 
 import asyncio
-import json
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
@@ -12,7 +11,10 @@ from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import BaseMessage
 
 from app.application.agent.state_schema import AgentState, StreamEvent
-from app.application.agent.streaming import format_sse_event
+from app.application.agent.streaming import (
+    build_langchain_stream_event,
+    format_sse_event,
+)
 
 from .observers.base import StreamObserver
 
@@ -28,6 +30,7 @@ class _StreamState:
     chunk_buffer: str
     last_flush_time: float
     total_message_count: int
+    llm_event_context: dict | None
 
 
 class SSEOrchestrator:
@@ -109,6 +112,7 @@ class SSEOrchestrator:
             chunk_buffer="",
             last_flush_time=self._now(),
             total_message_count=len(state.messages),
+            llm_event_context=None,
         )
 
         try:
@@ -117,22 +121,42 @@ class SSEOrchestrator:
                 event_data = event.get("data", {})
                 event_name = event.get("name", "")
 
+                if event_kind == "on_chat_model_start":
+                    yield format_sse_event(build_langchain_stream_event(event))
+                    continue
+
                 if event_kind == "on_chat_model_stream":
-                    sse = await self._handle_llm_chunk(event_data, stream_state)
+                    sse = await self._handle_llm_chunk(event, event_data, stream_state)
                     if sse:
                         yield sse
+                    continue
 
-                elif event_kind == "on_tool_start":
+                if event_kind == "on_chat_model_end":
+                    yield format_sse_event(build_langchain_stream_event(event))
+                    continue
+
+                if event_kind == "on_tool_start":
                     flush_sse = await self._flush_chunk_buffer(stream_state)
                     if flush_sse:
                         yield flush_sse
                     yield await self._emit_tool_call(event, event_data, event_name)
+                    continue
 
-                elif event_kind == "on_tool_end":
+                if event_kind == "on_tool_end":
                     yield await self._emit_tool_result(event, event_data)
+                    continue
 
-                elif event_kind == "on_chain_end" and event_name:
+                if event_kind == "on_chain_start" and event_name:
+                    yield format_sse_event(build_langchain_stream_event(event))
+                    continue
+
+                if event_kind == "on_chain_end" and event_name:
                     await self._handle_chain_end(event_data, event_name, stream_state)
+                    yield format_sse_event(build_langchain_stream_event(event))
+                    continue
+
+                if event_kind:
+                    yield format_sse_event(build_langchain_stream_event(event))
 
             # Flush any remaining chunks in buffer
             flush_sse = await self._flush_chunk_buffer(stream_state)
@@ -143,7 +167,7 @@ class SSEOrchestrator:
             await self._notify_complete(stream_state.full_response)
 
             # Emit done event
-            done_event = StreamEvent(kind="done", data={})
+            done_event = StreamEvent(event="done", data={})
             await self._notify_observers(done_event)
             yield format_sse_event(done_event)
 
@@ -152,18 +176,19 @@ class SSEOrchestrator:
             await self._notify_error(e)
 
             # Emit error event
-            error_event = StreamEvent(kind="error", data={"error": str(e)})
+            error_event = StreamEvent(event="error", data={"error": str(e)})
             yield format_sse_event(error_event)
 
     def _now(self) -> float:
         return asyncio.get_event_loop().time()
 
     async def _handle_llm_chunk(
-        self, event_data: dict, stream_state: _StreamState
+        self, event: dict, event_data: dict, stream_state: _StreamState
     ) -> str | None:
         chunk = event_data.get("chunk")
         if not (chunk and hasattr(chunk, "content") and chunk.content):
             return None
+        stream_state.llm_event_context = event
 
         stream_state.full_response += chunk.content
         stream_state.chunk_buffer += chunk.content
@@ -180,10 +205,16 @@ class SSEOrchestrator:
         if not stream_state.chunk_buffer:
             return None
 
-        stream_event = StreamEvent(
-            kind="llm_delta",
-            data={"content": stream_state.chunk_buffer},
-        )
+        if stream_state.llm_event_context:
+            stream_event = build_langchain_stream_event(
+                stream_state.llm_event_context,
+                data_override={"chunk": {"content": stream_state.chunk_buffer}},
+            )
+        else:
+            stream_event = StreamEvent(
+                event="on_chat_model_stream",
+                data={"chunk": {"content": stream_state.chunk_buffer}},
+            )
         await self._notify_observers(stream_event)
         stream_state.chunk_buffer = ""
         stream_state.last_flush_time = self._now()
@@ -192,27 +223,12 @@ class SSEOrchestrator:
     async def _emit_tool_call(
         self, event: dict, event_data: dict, event_name: str
     ) -> str:
-        tool_input = event_data.get("input", {})
-        stream_event = StreamEvent(
-            kind="tool_call",
-            data={
-                "tool_call_id": event.get("run_id", ""),
-                "tool_name": event_name,
-                "arguments": json.dumps(tool_input),
-            },
-        )
+        stream_event = build_langchain_stream_event(event)
         await self._notify_observers(stream_event)
         return format_sse_event(stream_event)
 
     async def _emit_tool_result(self, event: dict, event_data: dict) -> str:
-        output = event_data.get("output", "")
-        stream_event = StreamEvent(
-            kind="tool_result",
-            data={
-                "tool_call_id": event.get("run_id", ""),
-                "result": str(output),
-            },
-        )
+        stream_event = build_langchain_stream_event(event)
         await self._notify_observers(stream_event)
         return format_sse_event(stream_event)
 

@@ -7,8 +7,8 @@ class RouterNode:
     def __call__(self, state: AgentState) -> Literal["tools", END]:
         if isinstance(state, list):
             ai_message = state[-1]
-        elif messages := state.get("messages", []):
-            ai_message = messages[-1]
+        elif state.messages:
+            ai_message = state.messages[-1]
         else:
             raise ValueError(f"No messages found in state {state}")
         

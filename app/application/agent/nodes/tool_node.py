@@ -38,10 +38,11 @@ class ToolNode:
 
     def _get_tool_calls(self, state: AgentState) -> list[ToolCall]:
         """Get the tool calls from the state."""
-        if messages := state.get("messages", []):
-            return messages.tool_calls
-        else:
+        messages = state.messages
+        if not messages:
             raise ValueError("No messages found in input state")
+        last_message = messages[-1]
+        return list(getattr(last_message, "tool_calls", []) or [])
 
     async def _run_tool(self, tool_call: ToolCall, stream_writer) -> ToolMessage:
         """Run the tool and return the result."""

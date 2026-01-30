@@ -2,7 +2,7 @@
 LangGraph state schema for the agent.
 """
 
-from typing import Annotated, Literal
+from typing import Annotated
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
@@ -40,15 +40,17 @@ class StreamEvent(BaseModel):
     """
     Event emitted during streaming.
     Used to communicate with the frontend via SSE.
+
+    Mirrors LangChain astream_events v2 envelope where possible.
     """
 
-    kind: Literal[
-        "llm_delta",
-        "tool_call",
-        "tool_result",
-        "node_started",
-        "node_finished",
-        "done",
-        "error",
-    ]
+    # SSE event name (LangChain event or custom like "done"/"error")
+    event: str
+    # LangChain envelope fields
+    name: str | None = None
+    run_id: str | None = None
+    parent_ids: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+    # Event payload
     data: dict = Field(default_factory=dict)

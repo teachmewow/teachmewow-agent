@@ -3,6 +3,7 @@ Streaming utilities for adapting LangGraph events to SSE format.
 """
 
 import json
+from collections.abc import Mapping
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -30,63 +31,51 @@ class StreamHandler:
         self._events.append(event)
 
     def emit_llm_delta(self, content: str, message_id: str | None = None) -> None:
-        """Emit an LLM token delta event."""
-        self.emit(
-            StreamEvent(
-                kind="llm_delta",
-                data={"content": content, "message_id": message_id},
-            )
-        )
+        """Emit an LLM token delta event (on_chat_model_stream)."""
+        data = {"chunk": {"content": content}}
+        if message_id:
+            data["message_id"] = message_id
+        self.emit(StreamEvent(event="on_chat_model_stream", data=data))
 
     def emit_tool_call(
         self, tool_call_id: str, tool_name: str, arguments: str
     ) -> None:
-        """Emit a tool call event."""
+        """Emit a tool call event (on_tool_start)."""
+        tool_input = _try_parse_json(arguments)
         self.emit(
             StreamEvent(
-                kind="tool_call",
-                data={
-                    "tool_call_id": tool_call_id,
-                    "tool_name": tool_name,
-                    "arguments": arguments,
-                },
+                event="on_tool_start",
+                name=tool_name,
+                run_id=tool_call_id,
+                data={"input": tool_input},
             )
         )
 
     def emit_tool_result(self, tool_call_id: str, result: str) -> None:
-        """Emit a tool result event."""
+        """Emit a tool result event (on_tool_end)."""
         self.emit(
             StreamEvent(
-                kind="tool_result",
-                data={"tool_call_id": tool_call_id, "result": result},
+                event="on_tool_end",
+                run_id=tool_call_id,
+                data={"output": result},
             )
         )
 
     def emit_node_started(self, node_name: str) -> None:
-        """Emit a node started event."""
-        self.emit(
-            StreamEvent(
-                kind="node_started",
-                data={"node": node_name},
-            )
-        )
+        """Emit a node started event (on_chain_start)."""
+        self.emit(StreamEvent(event="on_chain_start", name=node_name, data={}))
 
     def emit_node_finished(self, node_name: str) -> None:
-        """Emit a node finished event."""
-        self.emit(
-            StreamEvent(
-                kind="node_finished",
-                data={"node": node_name},
-            )
-        )
+        """Emit a node finished event (on_chain_end)."""
+        self.emit(StreamEvent(event="on_chain_end", name=node_name, data={}))
 
     def emit_done(self) -> None:
         """Emit a done event."""
-        self.emit(StreamEvent(kind="done", data={}))
+        self.emit(StreamEvent(event="done", data={}))
 
     def emit_error(self, error: str) -> None:
         """Emit an error event."""
-        self.emit(StreamEvent(kind="error", data={"error": error}))
+        self.emit(StreamEvent(event="error", data={"error": error}))
 
     def get_events(self) -> list[StreamEvent]:
         """Get all emitted events."""
@@ -117,8 +106,64 @@ def format_sse_event(event: StreamEvent) -> str:
     Returns:
         Formatted SSE message string
     """
-    data = json.dumps({"kind": event.kind, **event.data})
-    return f"event: {event.kind}\ndata: {data}\n\n"
+    data = _safe_json_dumps(
+        {
+            "event": event.event,
+            "name": event.name,
+            "run_id": event.run_id,
+            "parent_ids": event.parent_ids,
+            "metadata": event.metadata,
+            "tags": event.tags,
+            "data": event.data,
+        }
+    )
+    return f"event: {event.event}\ndata: {data}\n\n"
+
+
+def build_langchain_stream_event(
+    event: dict, data_override: dict | None = None
+) -> StreamEvent:
+    """Build a StreamEvent envelope from a LangChain astream_events payload."""
+    data = data_override if data_override is not None else event.get("data", {})
+    return StreamEvent(
+        event=event.get("event", ""),
+        name=event.get("name", ""),
+        run_id=event.get("run_id", ""),
+        parent_ids=event.get("parent_ids") or [],
+        metadata=event.get("metadata") or {},
+        tags=event.get("tags") or [],
+        data=_sanitize_for_json(data),
+    )
+
+
+def _try_parse_json(raw: str) -> object:
+    try:
+        return json.loads(raw)
+    except Exception:
+        return raw
+
+
+def _safe_json_dumps(payload: object) -> str:
+    return json.dumps(payload, default=str)
+
+
+def _sanitize_for_json(value: object) -> object:
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, list):
+        return [_sanitize_for_json(item) for item in value]
+    if isinstance(value, Mapping):
+        return {str(k): _sanitize_for_json(v) for k, v in value.items()}
+    if hasattr(value, "model_dump"):
+        return _sanitize_for_json(value.model_dump())
+    if hasattr(value, "dict"):
+        try:
+            return _sanitize_for_json(value.dict())
+        except Exception:
+            return str(value)
+    return str(value)
 
 
 async def stream_graph_events(
@@ -147,62 +192,53 @@ async def stream_graph_events(
             event_data = event.get("data", {})
             event_name = event.get("name", "")
 
-            # Handle different event types
             if event_kind == "on_chat_model_stream":
-                # LLM token streaming
                 chunk = event_data.get("chunk")
-                if chunk and hasattr(chunk, "content") and chunk.content:
-                    stream_handler.emit_llm_delta(chunk.content)
+                content = getattr(chunk, "content", None) if chunk else None
+                if content:
+                    stream_handler.emit_llm_delta(content)
                     yield format_sse_event(
-                        StreamEvent(kind="llm_delta", data={"content": chunk.content})
+                        build_langchain_stream_event(
+                            event, data_override={"chunk": {"content": content}}
+                        )
                     )
+                continue
 
-            elif event_kind == "on_tool_start":
-                # Tool execution started
+            if event_kind == "on_tool_start":
                 tool_input = event_data.get("input", {})
                 stream_handler.emit_tool_call(
                     tool_call_id=event.get("run_id", ""),
                     tool_name=event_name,
                     arguments=json.dumps(tool_input),
                 )
-                yield format_sse_event(
-                    StreamEvent(
-                        kind="tool_call",
-                        data={
-                            "tool_call_id": event.get("run_id", ""),
-                            "tool_name": event_name,
-                            "arguments": json.dumps(tool_input),
-                        },
-                    )
-                )
+                yield format_sse_event(build_langchain_stream_event(event))
+                continue
 
-            elif event_kind == "on_tool_end":
-                # Tool execution finished
+            if event_kind == "on_tool_end":
                 output = event_data.get("output", "")
                 stream_handler.emit_tool_result(
                     tool_call_id=event.get("run_id", ""),
                     result=str(output),
                 )
-                yield format_sse_event(
-                    StreamEvent(
-                        kind="tool_result",
-                        data={
-                            "tool_call_id": event.get("run_id", ""),
-                            "result": str(output),
-                        },
-                    )
-                )
+                yield format_sse_event(build_langchain_stream_event(event))
+                continue
 
-            elif event_kind == "on_chain_start" and event_name:
+            if event_kind == "on_chain_start" and event_name:
                 stream_handler.emit_node_started(event_name)
+                yield format_sse_event(build_langchain_stream_event(event))
+                continue
 
-            elif event_kind == "on_chain_end" and event_name:
+            if event_kind == "on_chain_end" and event_name:
                 stream_handler.emit_node_finished(event_name)
+                yield format_sse_event(build_langchain_stream_event(event))
+                continue
 
-        # Emit done event
+            # Default passthrough for any other event
+            yield format_sse_event(build_langchain_stream_event(event))
+
         stream_handler.emit_done()
-        yield format_sse_event(StreamEvent(kind="done", data={}))
+        yield format_sse_event(StreamEvent(event="done", data={}))
 
     except Exception as e:
         stream_handler.emit_error(str(e))
-        yield format_sse_event(StreamEvent(kind="error", data={"error": str(e)}))
+        yield format_sse_event(StreamEvent(event="error", data={"error": str(e)}))
