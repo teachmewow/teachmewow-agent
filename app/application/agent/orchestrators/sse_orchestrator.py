@@ -5,9 +5,11 @@ SSE Orchestrator for managing graph execution and streaming with debouncing.
 import asyncio
 import json
 from collections.abc import AsyncGenerator
-from typing import Any
+from dataclasses import dataclass
 
 from langgraph.graph.state import CompiledStateGraph
+
+from langchain_core.messages import BaseMessage
 
 from app.application.agent.state_schema import AgentState, StreamEvent
 from app.application.agent.streaming import format_sse_event
@@ -18,6 +20,14 @@ from .observers.base import StreamObserver
 # Debounce interval for LLM chunks (in seconds)
 DEBOUNCE_INTERVAL_MS = 50
 DEBOUNCE_INTERVAL_S = DEBOUNCE_INTERVAL_MS / 1000
+
+
+@dataclass
+class _StreamState:
+    full_response: str
+    chunk_buffer: str
+    last_flush_time: float
+    total_message_count: int
 
 
 class SSEOrchestrator:
@@ -69,6 +79,13 @@ class SSEOrchestrator:
         for observer in self._observers:
             await observer.on_stream_complete(full_response)
 
+    async def _notify_node_complete(
+        self, node: str, messages: list[BaseMessage]
+    ) -> None:
+        """Notify all observers that a node completed with new messages."""
+        for observer in self._observers:
+            await observer.on_node_complete(node, messages)
+
     async def _notify_error(self, error: Exception) -> None:
         """Notify all observers of an error."""
         for observer in self._observers:
@@ -87,9 +104,12 @@ class SSEOrchestrator:
         Yields:
             SSE-formatted event strings
         """
-        full_response = ""
-        chunk_buffer = ""
-        last_flush_time = asyncio.get_event_loop().time()
+        stream_state = _StreamState(
+            full_response="",
+            chunk_buffer="",
+            last_flush_time=self._now(),
+            total_message_count=len(state.messages),
+        )
 
         try:
             async for event in self.graph.astream_events(state, version="v2"):
@@ -98,75 +118,29 @@ class SSEOrchestrator:
                 event_name = event.get("name", "")
 
                 if event_kind == "on_chat_model_stream":
-                    # LLM chunk - apply debouncing
-                    chunk = event_data.get("chunk")
-                    if chunk and hasattr(chunk, "content") and chunk.content:
-                        full_response += chunk.content
-                        chunk_buffer += chunk.content
-
-                        # Check if we should flush the buffer
-                        current_time = asyncio.get_event_loop().time()
-                        if current_time - last_flush_time >= DEBOUNCE_INTERVAL_S:
-                            if chunk_buffer:
-                                stream_event = StreamEvent(
-                                    kind="llm_delta",
-                                    data={"content": chunk_buffer},
-                                )
-                                await self._notify_observers(stream_event)
-                                yield format_sse_event(stream_event)
-                                chunk_buffer = ""
-                                last_flush_time = current_time
+                    sse = await self._handle_llm_chunk(event_data, stream_state)
+                    if sse:
+                        yield sse
 
                 elif event_kind == "on_tool_start":
-                    # Tool call - bypass debounce, deliver immediately
-                    # First flush any pending chunks
-                    if chunk_buffer:
-                        stream_event = StreamEvent(
-                            kind="llm_delta",
-                            data={"content": chunk_buffer},
-                        )
-                        await self._notify_observers(stream_event)
-                        yield format_sse_event(stream_event)
-                        chunk_buffer = ""
-                        last_flush_time = asyncio.get_event_loop().time()
-
-                    # Emit tool call event
-                    tool_input = event_data.get("input", {})
-                    stream_event = StreamEvent(
-                        kind="tool_call",
-                        data={
-                            "tool_call_id": event.get("run_id", ""),
-                            "tool_name": event_name,
-                            "arguments": json.dumps(tool_input),
-                        },
-                    )
-                    await self._notify_observers(stream_event)
-                    yield format_sse_event(stream_event)
+                    flush_sse = await self._flush_chunk_buffer(stream_state)
+                    if flush_sse:
+                        yield flush_sse
+                    yield await self._emit_tool_call(event, event_data, event_name)
 
                 elif event_kind == "on_tool_end":
-                    # Tool result - bypass debounce, deliver immediately
-                    output = event_data.get("output", "")
-                    stream_event = StreamEvent(
-                        kind="tool_result",
-                        data={
-                            "tool_call_id": event.get("run_id", ""),
-                            "result": str(output),
-                        },
-                    )
-                    await self._notify_observers(stream_event)
-                    yield format_sse_event(stream_event)
+                    yield await self._emit_tool_result(event, event_data)
+
+                elif event_kind == "on_chain_end" and event_name:
+                    await self._handle_chain_end(event_data, event_name, stream_state)
 
             # Flush any remaining chunks in buffer
-            if chunk_buffer:
-                stream_event = StreamEvent(
-                    kind="llm_delta",
-                    data={"content": chunk_buffer},
-                )
-                await self._notify_observers(stream_event)
-                yield format_sse_event(stream_event)
+            flush_sse = await self._flush_chunk_buffer(stream_state)
+            if flush_sse:
+                yield flush_sse
 
             # Notify observers that streaming is complete
-            await self._notify_complete(full_response)
+            await self._notify_complete(stream_state.full_response)
 
             # Emit done event
             done_event = StreamEvent(kind="done", data={})
@@ -180,3 +154,113 @@ class SSEOrchestrator:
             # Emit error event
             error_event = StreamEvent(kind="error", data={"error": str(e)})
             yield format_sse_event(error_event)
+
+    def _now(self) -> float:
+        return asyncio.get_event_loop().time()
+
+    async def _handle_llm_chunk(
+        self, event_data: dict, stream_state: _StreamState
+    ) -> str | None:
+        chunk = event_data.get("chunk")
+        if not (chunk and hasattr(chunk, "content") and chunk.content):
+            return None
+
+        stream_state.full_response += chunk.content
+        stream_state.chunk_buffer += chunk.content
+
+        if not self._should_flush(stream_state):
+            return None
+
+        return await self._flush_chunk_buffer(stream_state)
+
+    def _should_flush(self, stream_state: _StreamState) -> bool:
+        return self._now() - stream_state.last_flush_time >= DEBOUNCE_INTERVAL_S
+
+    async def _flush_chunk_buffer(self, stream_state: _StreamState) -> str | None:
+        if not stream_state.chunk_buffer:
+            return None
+
+        stream_event = StreamEvent(
+            kind="llm_delta",
+            data={"content": stream_state.chunk_buffer},
+        )
+        await self._notify_observers(stream_event)
+        stream_state.chunk_buffer = ""
+        stream_state.last_flush_time = self._now()
+        return format_sse_event(stream_event)
+
+    async def _emit_tool_call(
+        self, event: dict, event_data: dict, event_name: str
+    ) -> str:
+        tool_input = event_data.get("input", {})
+        stream_event = StreamEvent(
+            kind="tool_call",
+            data={
+                "tool_call_id": event.get("run_id", ""),
+                "tool_name": event_name,
+                "arguments": json.dumps(tool_input),
+            },
+        )
+        await self._notify_observers(stream_event)
+        return format_sse_event(stream_event)
+
+    async def _emit_tool_result(self, event: dict, event_data: dict) -> str:
+        output = event_data.get("output", "")
+        stream_event = StreamEvent(
+            kind="tool_result",
+            data={
+                "tool_call_id": event.get("run_id", ""),
+                "result": str(output),
+            },
+        )
+        await self._notify_observers(stream_event)
+        return format_sse_event(stream_event)
+
+    async def _handle_chain_end(
+        self, event_data: dict, node: str, stream_state: _StreamState
+    ) -> None:
+        new_messages, updated_count = self._extract_new_messages(
+            event_data, stream_state.total_message_count
+        )
+        stream_state.total_message_count = updated_count
+        if new_messages:
+            await self._notify_node_complete(node, new_messages)
+
+    def _extract_new_messages(
+        self, event_data: dict, total_message_count: int
+    ) -> tuple[list[BaseMessage], int]:
+        """
+        Extract new messages produced by a node from LangGraph event data.
+
+        Handles both cases:
+        - output contains full message history
+        - output contains only new messages
+        """
+        messages = self._get_messages_from_event_data(event_data)
+        if not messages:
+            return [], total_message_count
+
+        if len(messages) > total_message_count:
+            new_messages = messages[total_message_count:]
+            return new_messages, len(messages)
+
+        # If messages length is not greater, assume it's already a delta
+        return messages, total_message_count + len(messages)
+
+    def _get_messages_from_event_data(self, event_data: dict) -> list[BaseMessage]:
+        """
+        Try to extract messages from LangGraph event data.
+
+        Looks for messages in common locations for LangGraph events.
+        """
+        for key in ("output", "state", "result"):
+            container = event_data.get(key)
+            if isinstance(container, dict) and "messages" in container:
+                messages = container.get("messages", [])
+                if isinstance(messages, list):
+                    return messages
+
+        if "messages" in event_data and isinstance(event_data["messages"], list):
+            return event_data["messages"]
+
+        return []

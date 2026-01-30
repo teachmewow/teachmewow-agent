@@ -4,6 +4,8 @@ Base observer interface for the SSE orchestrator.
 
 from typing import Protocol
 
+from langchain_core.messages import BaseMessage
+
 from app.application.agent.state_schema import StreamEvent
 
 
@@ -22,6 +24,16 @@ class StreamObserver(Protocol):
 
         Args:
             event: The stream event that was processed
+        """
+        ...
+
+    async def on_node_complete(self, node: str, messages: list[BaseMessage]) -> None:
+        """
+        Called when a node completes and produces new messages.
+
+        Args:
+            node: The node name that completed
+            messages: New messages produced by the node
         """
         ...
 
