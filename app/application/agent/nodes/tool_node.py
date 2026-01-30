@@ -1,17 +1,18 @@
 from langgraph.config import get_stream_writer
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
+from langchain_core.runnables import RunnableConfig
 from app.application.agent.state_schema import AgentState
 from app.domain.entities.message import ToolCall
 
 
 class ToolNode:
     def __init__(self, tools: list[BaseTool]) -> None:
-        self.stream_writer = get_stream_writer()
         self.all_tools_by_name = {tool.name: tool for tool in tools}
 
-    async def __call__(self, state: AgentState, config: dict) -> AgentState:
+    async def __call__(self, state: AgentState, config: RunnableConfig | None = None) -> AgentState:
         """Call the tools with the current state."""
+        stream_writer = get_stream_writer()
         
         tool_calls = self._get_tool_calls(state)
 
@@ -21,7 +22,7 @@ class ToolNode:
                 "arguments": tool_call.arguments, 
                 "tool_call_id": tool_call.id
             }
-            self.stream_writer(
+            stream_writer(
                 {
                     "kind": "tool_call", 
                     "data": tool_call_dict
@@ -30,7 +31,7 @@ class ToolNode:
 
         outputs = []
         for tool_call in tool_calls:
-            tool_result = await self._run_tool(tool_call)
+            tool_result = await self._run_tool(tool_call, stream_writer)
             outputs.append(tool_result)
         
         return {"messages": outputs}
@@ -42,11 +43,11 @@ class ToolNode:
         else:
             raise ValueError("No messages found in input state")
 
-    async def _run_tool(self, tool_call: ToolCall) -> ToolMessage:
+    async def _run_tool(self, tool_call: ToolCall, stream_writer) -> ToolMessage:
         """Run the tool and return the result."""
         try:
             tool_result = await self.all_tools_by_name[tool_call.name].arun(tool_call.arguments)
-            self.stream_writer(
+            stream_writer(
                 {
                     "kind": "tool_result", 
                     "data": {
@@ -63,7 +64,7 @@ class ToolNode:
             )
         except Exception as e:
             error_message = f"Error calling tool {tool_call.name}: {e}"
-            self.stream_writer(
+            stream_writer(
                 {
                     "kind": "tool_result", 
                     "data": {

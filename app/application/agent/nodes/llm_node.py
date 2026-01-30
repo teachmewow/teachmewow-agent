@@ -1,6 +1,7 @@
 from app.application.agent.state_schema import AgentState
 from langchain_core.messages import BaseMessageChunk, SystemMessage
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.runnables import RunnableConfig
 from collections.abc import AsyncGenerator
 from langchain_core.messages import BaseMessage
 
@@ -18,7 +19,7 @@ class LLMNode:
     def __init__(self, model: BaseChatModel) -> None:
         self.model = model
 
-    async def __call__(self, state: AgentState, config: dict) -> AgentState:
+    async def __call__(self, state: AgentState, config: RunnableConfig | None = None) -> AgentState:
         """Call the LLM with the current state."""
         chat_history = self.mount_chat_history(state)
         response = await self._stream_llm_response(self.model, chat_history, config)
@@ -32,7 +33,7 @@ class LLMNode:
         self,
         model: BaseChatModel,
         messages: list[BaseMessage],
-        config: dict,
+        config: RunnableConfig | None,
     ) -> AsyncGenerator[BaseMessageChunk]:
         """Stream the LLM response."""
         response = None

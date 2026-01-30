@@ -1,3 +1,30 @@
 .venv/
 *.egg-info/
 .DS_Store
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyd
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# Logs
+*.log
+backend.log
+
+# Build artifacts
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/

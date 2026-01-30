@@ -5,6 +5,7 @@ Loads configuration from environment variables.
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        env_ignore_empty=True,
     )
 
     # Database
@@ -31,6 +33,22 @@ class Settings(BaseSettings):
     # App
     app_env: str = "development"
     debug: bool = True
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, v: str | bool) -> bool:
+        """Parse debug value, handling string 'true'/'false' and ignoring invalid values."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            lower = v.lower()
+            if lower in ("true", "1", "yes", "on"):
+                return True
+            if lower in ("false", "0", "no", "off"):
+                return False
+            # If invalid string (like "WARN"), default to True for development
+            return True
+        return True
 
     @property
     def is_production(self) -> bool:

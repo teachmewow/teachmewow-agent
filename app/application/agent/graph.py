@@ -4,7 +4,7 @@ Defines the graph structure with nodes and edges.
 """
 
 from langchain_core.tools import BaseTool
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, START, StateGraph
 
 from app.infrastructure.llm import LLMClient
 
@@ -31,6 +31,9 @@ def create_agent_graph(llm_client: LLMClient, tools: list[BaseTool]) -> StateGra
     # Add nodes
     graph.add_node("agent", LLMNode(llm_client.model))
     graph.add_node("tools", ToolNode(tools))
+
+    # Set entry point: START -> agent
+    graph.set_entry_point("agent")
 
     # Add edges
     graph.add_conditional_edges(

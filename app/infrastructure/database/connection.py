@@ -41,6 +41,7 @@ def get_database_url() -> str:
     """
     Get async database URL from settings.
     Converts postgresql:// to postgresql+asyncpg://
+    Note: asyncpg doesn't support sslmode in URL, use connect_args instead.
     """
     settings = get_settings()
     url = settings.database_url
@@ -51,12 +52,24 @@ def get_database_url() -> str:
 
 def create_engine() -> AsyncEngine:
     """Create SQLAlchemy async engine."""
+    url = get_database_url()
+    # Disable SSL for local connections (macOS permission issues)
+    # Use both URL parameter and connect_args for maximum compatibility
+    connect_args = {}
+    if "localhost" in url or "127.0.0.1" in url:
+        connect_args["ssl"] = False
+    
+    print(f"Database URL: {url.split('@')[0]}@***")
+    if connect_args:
+        print(f"Database connection args: {connect_args}")
+    
     return create_async_engine(
-        get_database_url(),
+        url,
         echo=get_settings().debug,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,
+        connect_args=connect_args if connect_args else {},
     )
 
 
