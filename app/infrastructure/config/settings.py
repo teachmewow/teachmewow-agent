@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
 
+    # HelixDB
+    helix_local: bool = True
+    helix_port: int = 6969
+    helix_api_endpoint: str = ""
+    helix_api_key: str = ""
+    helix_verbose: bool = False
+
     # App
     app_env: str = "development"
     debug: bool = True
