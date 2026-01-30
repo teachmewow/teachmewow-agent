@@ -42,7 +42,7 @@ class ToolNode:
         else:
             raise ValueError("No messages found in input state")
 
-    async def _run_tool(self, tool_call: ToolCall) -> str:
+    async def _run_tool(self, tool_call: ToolCall) -> ToolMessage:
         """Run the tool and return the result."""
         try:
             tool_result = await self.all_tools_by_name[tool_call.name].arun(tool_call.arguments)
