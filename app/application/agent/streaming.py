@@ -233,6 +233,10 @@ async def stream_graph_events(
                 yield format_sse_event(build_langchain_stream_event(event))
                 continue
 
+            if event_kind == "custom":
+                yield format_sse_event(build_langchain_stream_event(event))
+                continue
+
             # Default passthrough for any other event
             yield format_sse_event(build_langchain_stream_event(event))
 

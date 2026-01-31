@@ -146,6 +146,15 @@ class SSEOrchestrator:
                     yield await self._emit_tool_result(event, event_data)
                     continue
 
+                if event_kind == "custom":
+                    flush_sse = await self._flush_chunk_buffer(stream_state)
+                    if flush_sse:
+                        yield flush_sse
+                    stream_event = build_langchain_stream_event(event)
+                    await self._notify_observers(stream_event)
+                    yield format_sse_event(stream_event)
+                    continue
+
                 if event_kind == "on_chain_start" and event_name:
                     yield format_sse_event(build_langchain_stream_event(event))
                     continue
