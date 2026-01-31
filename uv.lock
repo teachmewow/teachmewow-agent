@@ -251,6 +251,18 @@ wheels = [
 ]
 
 [[package]]
+name = "helix-py"
+version = "0.2.31"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9d/b6/41ce5c1bef48ee30fa7e820c2005db1b3850a11fb1c5577babbd2d512da6/helix_py-0.2.31.tar.gz", hash = "sha256:1547d6c88432ca863cb52a4538b9bfc37ab8476e729853a32b42e412c36489f9", size = 99212 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/77/e4/d15051e9c1c6f5d09de597bd0fe22c36f0c9290433077d609547b85a7c64/helix_py-0.2.31-py3-none-any.whl", hash = "sha256:b0ca696eed2072f67693db530597687d50d2356c4c6a9ba0784123de770c9ce2", size = 38252 },
+]
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -1188,6 +1200,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "fastapi" },
     { name = "greenlet" },
+    { name = "helix-py" },
     { name = "langchain" },
     { name = "langchain-openai" },
     { name = "langgraph" },
@@ -1213,6 +1226,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "greenlet", specifier = ">=3.0.0" },
+    { name = "helix-py", specifier = ">=0.2.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.0" },
     { name = "langchain", specifier = ">=0.3.0" },
     { name = "langchain-openai", specifier = ">=0.2.0" },
