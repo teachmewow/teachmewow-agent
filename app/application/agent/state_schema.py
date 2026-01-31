@@ -2,11 +2,27 @@
 LangGraph state schema for the agent.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
+
+ChecklistStatus = Literal["pending", "in_progress", "complete", "failed"]
+SubgraphStatus = Literal["idle", "running", "complete", "failed"]
+SubgraphName = Literal["knowledge_explorer", "none"]
+
+
+class ChecklistItem(BaseModel):
+    id: str
+    title: str
+    status: ChecklistStatus = "pending"
+    evidence: list[str] = Field(default_factory=list)
+
+
+class RoutingDecision(BaseModel):
+    subgraph: SubgraphName = "none"
+    checklist: list[ChecklistItem] = Field(default_factory=list)
 
 
 class AgentState(BaseModel):
@@ -23,6 +39,10 @@ class AgentState(BaseModel):
         wow_class: WoW class context (required)
         wow_spec: WoW spec context (required)
         wow_role: WoW role context (required: tank, healer, dps)
+        route_decision: Decision for routing to a subgraph
+        checklist_items: Structured checklist for deep exploration
+        exploration_context: Aggregated context from subgraph exploration
+        subgraph_status: Status of the active subgraph, if any
     """
 
     messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
@@ -31,6 +51,10 @@ class AgentState(BaseModel):
     wow_class: str
     wow_spec: str
     wow_role: str
+    route_decision: RoutingDecision | None = None
+    checklist_items: list[ChecklistItem] = Field(default_factory=list)
+    exploration_context: str = ""
+    subgraph_status: SubgraphStatus = "idle"
 
     class Config:
         arbitrary_types_allowed = True

@@ -72,8 +72,10 @@ class ToolNode:
     async def _run_tool(self, tool_call: ToolCall, state: AgentState, stream_writer) -> ToolMessage:
         """Run the tool and return the result."""
         try:
-            injected_args = self._inject_context(tool_call.arguments, state)
-            tool_result = await self.all_tools_by_name[tool_call.name].arun(injected_args)
+            tool = self.all_tools_by_name[tool_call.name]
+            parsed_args = self._parse_arguments(tool_call.arguments)
+            injected_args = self._inject_context(parsed_args, state, tool)
+            tool_result = await tool.arun(injected_args)
             stream_writer(
                 {
                     "kind": "tool_result", 
@@ -107,17 +109,34 @@ class ToolNode:
                 tool_call_id=tool_call.id
             )
 
-    def _inject_context(self, arguments: str, state: AgentState) -> str:
-        """Inject class/spec/role into tool call arguments."""
+    def _parse_arguments(self, arguments: str | dict) -> dict | str:
+        if isinstance(arguments, dict):
+            return arguments
+        if not arguments:
+            return {}
         try:
-            parsed = json.loads(arguments) if arguments else {}
+            parsed = json.loads(arguments)
+            return parsed
         except json.JSONDecodeError:
             return arguments
 
-        if not isinstance(parsed, dict):
+    def _inject_context(
+        self, arguments: dict | str, state: AgentState, tool: BaseTool
+    ) -> dict | str:
+        """Inject class/spec/role into tool call arguments when supported."""
+        if not isinstance(arguments, dict):
             return arguments
 
-        parsed.setdefault("wow_class", state.wow_class)
-        parsed.setdefault("wow_spec", state.wow_spec)
-        parsed.setdefault("wow_role", state.wow_role)
-        return json.dumps(parsed)
+        fields = {}
+        args_schema = getattr(tool, "args_schema", None)
+        if args_schema is not None and hasattr(args_schema, "model_fields"):
+            fields = args_schema.model_fields
+
+        for key, value in {
+            "wow_class": state.wow_class,
+            "wow_spec": state.wow_spec,
+            "wow_role": state.wow_role,
+        }.items():
+            if key in fields and key not in arguments:
+                arguments[key] = value
+        return arguments
