@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = "gpt-5-nano"
 
     # HelixDB
     helix_local: bool = True

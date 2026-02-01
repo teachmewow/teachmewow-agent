@@ -33,7 +33,7 @@ def test_checklist_router_finalize_when_complete() -> None:
 
 
 def test_explorer_tool_router_detects_tool_calls() -> None:
-    message = AIMessage(content="", tool_calls=[{"name": "search_helix", "args": {}}])
+    message = AIMessage(content="", tool_calls=[{"name": "helix_simple_rag", "args": {}}])
     state = _base_state()
     state.messages = [message]
     router = ExplorerToolRouterNode()

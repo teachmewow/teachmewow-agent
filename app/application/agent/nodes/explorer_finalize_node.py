@@ -29,7 +29,6 @@ class ExplorerFinalizeNode:
                 "kind": "checklist_complete",
                 "data": {
                     "items": [item.model_dump() for item in state.checklist_items],
-                    "exploration_context": state.exploration_context,
                     "summary": summary.content if summary else "",
                 },
             }
@@ -45,7 +44,6 @@ class ExplorerFinalizeNode:
     ) -> AIMessage | None:
         payload = {
             "checklist_items": [item.model_dump() for item in state.checklist_items],
-            "exploration_context": state.exploration_context,
         }
         messages = [
             SystemMessage(content=EXPLORER_SUMMARY_SYSTEM_PROMPT),

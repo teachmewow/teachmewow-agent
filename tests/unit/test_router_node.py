@@ -30,7 +30,7 @@ def test_router_routes_to_knowledge_explorer() -> None:
 def test_router_routes_to_tools_for_other_calls() -> None:
     message = AIMessage(
         content="",
-        tool_calls=[{"name": "search_helix", "args": {}}],
+        tool_calls=[{"name": "helix_simple_rag", "args": {}}],
     )
     state = _base_state()
     state.messages = [message]

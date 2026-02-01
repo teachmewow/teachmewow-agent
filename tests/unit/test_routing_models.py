@@ -18,7 +18,6 @@ def test_agent_state_defaults() -> None:
     )
     assert state.route_decision is None
     assert state.checklist_items == []
-    assert state.exploration_context == ""
     assert state.subgraph_status == "idle"
 
 

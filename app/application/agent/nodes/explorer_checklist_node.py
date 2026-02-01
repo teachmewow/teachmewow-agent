@@ -9,6 +9,10 @@ from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.application.agent.prompts.route_prompt import ROUTING_SYSTEM_PROMPT
+from app.application.agent.nodes.explorer_message_utils import (
+    build_explorer_start_marker,
+    has_explorer_start_marker,
+)
 from app.application.agent.state_schema import AgentState, ChecklistItem, RoutingDecision
 
 
@@ -27,8 +31,11 @@ class ExplorerChecklistNode:
         extracted = self._extract_checklist_from_tool_call(state)
         if extracted:
             update = {"checklist_items": extracted}
+            if not has_explorer_start_marker(state.messages):
+                update["messages"] = update.get("messages", [])
+                update["messages"].append(build_explorer_start_marker())
             if tool_ack:
-                update["messages"] = tool_ack
+                update["messages"] = tool_ack + update.get("messages", [])
             return update
 
         routing_model = self.model.with_structured_output(RoutingDecision)
