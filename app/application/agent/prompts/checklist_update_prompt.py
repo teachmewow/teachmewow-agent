@@ -7,6 +7,7 @@ Rules:
 - If tool calls returned no results, mark the current item complete with an observation stating that no data was found.
 - If no new evidence is present, keep its status unchanged.
 - evidence must contain short bullet-like strings with key facts.
+- Prefix every evidence string with "- " to keep rendering consistent in the UI.
 
 Output:
 - item_id: id of the current item

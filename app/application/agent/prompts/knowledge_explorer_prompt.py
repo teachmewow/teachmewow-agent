@@ -12,11 +12,9 @@ Tool usage:
 - When calling tools, focus on the most relevant checklist item first.
 - If any checklist item is pending or in progress, you MUST call a tool.
 - Do not answer with plain text while pending items exist.
-- Never call run_knowledge_explorer inside this subgraph.
-- Helix tools return formatted context text (not raw JSON).
-- Use helix_simple_rag for direct lookups (facts, rotations, talents, stat priority).
-- Use helix_graph_traversal when relationships matter (interactions, dependencies, tradeoffs).
-- Use helix_hybrid_rag_edges for multi-part or ambiguous questions, or when direct lookup may miss context.
+- Use get_class_info for semantic search and general class/spec info.
+- Use get_build when the checklist item is specifically about builds or build context.
+- get_class_info returns JSON with evidence_blocks; get_build returns JSON with builds.
 
 Inputs:
 - You receive the current checklist item as a plain string.
@@ -35,4 +33,5 @@ Output:
 - If no tool call is needed, respond with a short neutral sentence.
 - Do not invent information.
 - Do not make up information.
+- If tools return no results, state the gap explicitly rather than guessing.
 """

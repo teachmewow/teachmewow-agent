@@ -1,41 +1,24 @@
-"""
-Checklist builder for the knowledge explorer flow.
-"""
-
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.application.agent.prompts.route_prompt import ROUTING_SYSTEM_PROMPT
-from app.application.agent.nodes.explorer_message_utils import (
-    build_explorer_start_marker,
-    has_explorer_start_marker,
-)
 from app.application.agent.state_schema import AgentState, RoutingDecision
 
 
-class ExplorerChecklistNode:
+class RoutingNode:
     def __init__(self, model: BaseChatModel) -> None:
         self.model = model
 
     async def __call__(
         self, state: AgentState, config: RunnableConfig | None = None
     ) -> AgentState:
-        if state.checklist_items:
-            if has_explorer_start_marker(state.messages):
-                return {}
-            return {"messages": [build_explorer_start_marker()]}
-
         routing_model = self.model.with_structured_output(RoutingDecision)
         messages = [SystemMessage(content=ROUTING_SYSTEM_PROMPT), *state.messages]
         decision = await routing_model.ainvoke(messages, config)
         if isinstance(decision, dict):
             decision = RoutingDecision(**decision)
-        update: dict = {
+        return {
             "route_decision": decision,
             "checklist_items": list(decision.checklist),
         }
-        if not has_explorer_start_marker(state.messages):
-            update["messages"] = [build_explorer_start_marker()]
-        return update
-

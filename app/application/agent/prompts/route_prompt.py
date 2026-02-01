@@ -5,7 +5,7 @@ Decide if the user's request needs deep external knowledge lookup.
 
 Rules:
 - Use subgraph = "knowledge_explorer" when the answer requires WoW-specific knowledge
-  or details not present in the conversation context. Also you MUST create a checklist with 2-5 items.
+  or details not present in the conversation context. Also you MUST create a checklist with 2-5 items with what needs to be search to answer the question.
 - Checklist items must be ordered, dependency-aware, and concrete. If step B depends on step A, A must appear first.
 - Checklist items must be phrased as actionable searches (no filler, no generic placeholders).
 - Each item must have id, title, status, evidence. Start with status="pending" and evidence=[].

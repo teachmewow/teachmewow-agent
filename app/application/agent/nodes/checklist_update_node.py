@@ -142,7 +142,7 @@ class ChecklistUpdateNode:
                 updated.append(item)
                 continue
             evidence = list(item.evidence)
-            evidence.append("No results found for the requested filters.")
+            evidence.append("- No results found for the requested filters.\n")
             updated.append(
                 ChecklistItem(
                     id=item.id,
