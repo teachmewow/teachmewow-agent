@@ -54,8 +54,13 @@ class DatabaseObserver:
         if not tool_call_id:
             return
 
+        if tool_call_id in self._saved_tool_call_ids:
+            return
+
         output = event.data.get("output")
         content = json.dumps(output) if isinstance(output, (dict, list)) else str(output)
+
+        self._saved_tool_call_ids.add(tool_call_id)
 
         tool_message = Message(
             id=f"tool-{tool_call_id}",
@@ -65,8 +70,11 @@ class DatabaseObserver:
             tool_call_id=tool_call_id,
             tool_result=content,
         )
-        await self.message_repository.save(tool_message)
-        self._saved_tool_call_ids.add(tool_call_id)
+        try:
+            await self.message_repository.save(tool_message)
+        except Exception:
+            self._saved_tool_call_ids.discard(tool_call_id)
+            raise
 
     async def on_node_complete(self, node: str, messages: list[BaseMessage]) -> None:
         """
@@ -80,8 +88,19 @@ class DatabaseObserver:
         """
         for message in messages:
             if isinstance(message, ToolMessage) and message.tool_call_id:
-                if message.tool_call_id in self._saved_tool_call_ids:
+                tool_call_id = message.tool_call_id
+                if tool_call_id in self._saved_tool_call_ids:
                     continue
+                self._saved_tool_call_ids.add(tool_call_id)
+                domain_message = self._convert_message(message)
+                if domain_message is not None:
+                    try:
+                        await self.message_repository.save(domain_message)
+                    except Exception:
+                        self._saved_tool_call_ids.discard(tool_call_id)
+                        raise
+                continue
+
             domain_message = self._convert_message(message)
             if domain_message is not None:
                 await self.message_repository.save(domain_message)

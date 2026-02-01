@@ -32,14 +32,17 @@ async def build_lookup(
     """
     normalized_env = _normalize_environment(environment)
     normalized_mode = _normalize_build_mode(mode)
+    normalized_class = str(wow_class or "").strip().lower()
+    normalized_spec = str(wow_spec or "").strip().lower()
+    normalized_role = str(wow_role or "").strip().lower()
     normalized_scenario = scenario or f"{normalized_env} {normalized_mode}"
 
     async with get_session() as session:
         query = (
             select(BuildModel)
-            .where(BuildModel.wow_class == wow_class)
-            .where(BuildModel.wow_spec == wow_spec)
-            .where(BuildModel.wow_role == wow_role)
+            .where(BuildModel.wow_class == normalized_class)
+            .where(BuildModel.wow_spec == normalized_spec)
+            .where(BuildModel.wow_role == normalized_role)
             .where(BuildModel.environment == normalized_env)
             .where(BuildModel.build_mode == normalized_mode)
             .where(BuildModel.scenario == normalized_scenario)
@@ -52,17 +55,19 @@ async def build_lookup(
     if not build:
         return "No results found."
 
-    tree_payload = build.tree_payload or _build_tree_payload(build)
+    tree_payload = _normalize_tree_payload(build.tree_payload, build.tree_snapshot_id)
+    if tree_payload is None:
+        tree_payload = _build_tree_payload(build)
     output = {
         "tool": "build_lookup",
         "build": {
             "importString": build.import_code,
-            "specId": wow_spec,
+            "specId": normalized_spec,
             "scenario": normalized_scenario,
             "source": build.source or "",
             "updatedAt": build.updated_at.isoformat() if build.updated_at else None,
             "patch": build.patch or "",
-            "tree": tree_payload,
+            "trees": tree_payload.get("trees", []),
         },
     }
     return json.dumps(output, ensure_ascii=True)
@@ -70,12 +75,64 @@ async def build_lookup(
 
 def _build_tree_payload(build: BuildModel) -> dict:
     helix_client = get_helix_client()
-    tree_id = str(build.tree_snapshot_id or "")
-    node_records = []
-    if tree_id:
+    selections = _normalize_selections(build.selections, build.selected_nodes)
+    tree_entries = _coerce_tree_entries(build.tree_snapshot_ids, build.tree_snapshot_id)
+    trees: list[dict] = []
+    for entry in tree_entries:
+        tree_id = entry.get("id", "")
+        if not tree_id:
+            continue
         result = helix_client.query("FetchTalentTreeNodes", {"tree_id": tree_id})
         node_records = _extract_records(result.data)
+        trees.append(
+            _build_tree_payload_from_records(
+                node_records,
+                selections,
+                kind=entry.get("kind", "spec"),
+                tree_id=str(tree_id),
+                tree_name=entry.get("name", ""),
+            )
+        )
 
+    return {"trees": trees}
+
+
+def _normalize_selections(
+    selections: object | None, selected_nodes: object | None
+) -> list[dict]:
+    if isinstance(selections, list) and selections:
+        normalized = []
+        for entry in selections:
+            if isinstance(entry, dict) and entry.get("nodeId"):
+                normalized.append(
+                    {
+                        "nodeId": str(entry.get("nodeId")),
+                        "rank": int(entry.get("rank") or 1),
+                    }
+                )
+            elif isinstance(entry, dict) and entry.get("node_id"):
+                normalized.append(
+                    {
+                        "nodeId": str(entry.get("node_id")),
+                        "rank": int(entry.get("rank") or 1),
+                    }
+                )
+        if normalized:
+            return normalized
+
+    nodes = []
+    if isinstance(selected_nodes, list):
+        nodes = [str(item) for item in selected_nodes if str(item).strip()]
+    return [{"nodeId": node_id, "rank": 1} for node_id in nodes]
+
+
+def _build_tree_payload_from_records(
+    node_records: list,
+    selections: list[dict],
+    kind: str,
+    tree_id: str,
+    tree_name: str = "",
+) -> dict:
     nodes = []
     max_col = 0
     max_row = 0
@@ -108,11 +165,13 @@ def _build_tree_payload(build: BuildModel) -> dict:
         if not talent_node_id or display_col < 0 or display_row < 0:
             continue
 
+        icon_name = icon or "inv_misc_questionmark"
         nodes.append(
             {
                 "id": talent_node_id,
                 "name": name or f"TalentNode {talent_node_id}",
-                "icon": icon,
+                "icon": icon_name,
+                "iconUrl": f"https://render.worldofwarcraft.com/icons/56/{icon_name}.jpg",
                 "maxRank": max_rank,
                 "position": {
                     "column": display_col + col_offset,
@@ -134,44 +193,20 @@ def _build_tree_payload(build: BuildModel) -> dict:
             if child_id in node_lookup:
                 edges.append({"from": node["id"], "to": child_id})
 
-    selections = _normalize_selections(build.selections, build.selected_nodes)
+    filtered_selections = [
+        selection for selection in selections if selection.get("nodeId") in node_lookup
+    ]
 
     return {
+        "kind": kind,
+        "treeId": tree_id,
+        "treeName": tree_name,
         "columns": max_col + col_offset + 1 if max_col >= 0 else 0,
         "rows": max_row + row_offset + 1 if max_row >= 0 else 0,
         "nodes": nodes,
         "edges": edges,
-        "selections": selections,
+        "selections": filtered_selections,
     }
-
-
-def _normalize_selections(
-    selections: object | None, selected_nodes: object | None
-) -> list[dict]:
-    if isinstance(selections, list) and selections:
-        normalized = []
-        for entry in selections:
-            if isinstance(entry, dict) and entry.get("nodeId"):
-                normalized.append(
-                    {
-                        "nodeId": str(entry.get("nodeId")),
-                        "rank": int(entry.get("rank") or 1),
-                    }
-                )
-            elif isinstance(entry, dict) and entry.get("node_id"):
-                normalized.append(
-                    {
-                        "nodeId": str(entry.get("node_id")),
-                        "rank": int(entry.get("rank") or 1),
-                    }
-                )
-        if normalized:
-            return normalized
-
-    nodes = []
-    if isinstance(selected_nodes, list):
-        nodes = [str(item) for item in selected_nodes if str(item).strip()]
-    return [{"nodeId": node_id, "rank": 1} for node_id in nodes]
 
 
 def _node_props(node: dict) -> dict:
@@ -201,6 +236,51 @@ def _extract_records(payload: object) -> list:
                 return value
         return [payload]
     return [payload]
+
+
+def _normalize_tree_payload(tree_payload: object, fallback_tree_id: str | None) -> dict | None:
+    if not isinstance(tree_payload, dict):
+        return None
+    if "trees" in tree_payload and isinstance(tree_payload.get("trees"), list):
+        return tree_payload
+    if "nodes" in tree_payload:
+        tree_id = str(fallback_tree_id or "")
+        return {
+            "trees": [
+                {
+                    "kind": "spec",
+                    "treeId": tree_id,
+                    "treeName": "",
+                    "columns": tree_payload.get("columns", 0),
+                    "rows": tree_payload.get("rows", 0),
+                    "nodes": tree_payload.get("nodes", []),
+                    "edges": tree_payload.get("edges", []),
+                    "selections": tree_payload.get("selections", []),
+                }
+            ]
+        }
+    return None
+
+
+def _coerce_tree_entries(
+    tree_snapshot_ids: object | None, fallback_tree_id: object | None
+) -> list[dict]:
+    entries: list[dict] = []
+    if isinstance(tree_snapshot_ids, list):
+        for entry in tree_snapshot_ids:
+            if isinstance(entry, dict) and entry.get("id"):
+                entries.append(
+                    {
+                        "id": str(entry.get("id")),
+                        "kind": str(entry.get("kind") or "spec"),
+                        "name": str(entry.get("name") or ""),
+                    }
+                )
+            elif isinstance(entry, str):
+                entries.append({"id": entry, "kind": "spec", "name": ""})
+    if not entries and fallback_tree_id:
+        entries.append({"id": str(fallback_tree_id), "kind": "spec", "name": ""})
+    return entries
 
 
 def _normalize_environment(value: str) -> str:
