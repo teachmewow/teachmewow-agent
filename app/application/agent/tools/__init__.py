@@ -4,8 +4,8 @@ Agent tools module.
 
 from langchain_core.tools import BaseTool
 
-from .get_class_info import get_class_info
-from .get_build import get_build
+from .build_lookup import build_lookup
+from .run_wow_knowledge_explorer import run_wow_knowledge_explorer
 
 
 def get_all_tools() -> list[BaseTool]:
@@ -16,13 +16,13 @@ def get_all_tools() -> list[BaseTool]:
         List of tool instances
     """
     return [
-        get_class_info,
-        get_build,
+        build_lookup,
+        run_wow_knowledge_explorer,
     ]
 
 
 __all__ = [
-    "get_class_info",
-    "get_build",
+    "build_lookup",
+    "run_wow_knowledge_explorer",
     "get_all_tools",
 ]

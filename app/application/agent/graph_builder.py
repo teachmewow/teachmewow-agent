@@ -3,7 +3,7 @@ Graph builder factory for creating the compiled LangGraph agent.
 """
 
 from langchain_core.tools import BaseTool
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from app.infrastructure.llm import LLMClient
@@ -12,7 +12,7 @@ from .state_schema import AgentState
 from .nodes.llm_node import LLMNode
 from .nodes.tool_node import ToolNode
 from .nodes.router_node import RouterNode
-from .nodes.routing_node import RoutingNode
+from .nodes.explorer_entry_node import ExplorerEntryNode
 from .nodes.explorer_checklist_node import ExplorerChecklistNode
 from .nodes.explorer_prepare_node import ExplorerPrepareNode
 from .nodes.explorer_agent_node import ExplorerAgentNode
@@ -59,35 +59,30 @@ class GraphBuilder:
         graph = StateGraph(AgentState)
 
         main_model = (
-            self.llm_client.model.bind_tools(self.tools)
+            self.llm_client.main_model.bind_tools(self.tools)
             if self.tools
-            else self.llm_client.model
+            else self.llm_client.main_model
         )
-        graph.add_node("router", RoutingNode(self.llm_client.model))
         graph.add_node("agent", LLMNode(main_model))
         graph.add_node("tools", ToolNode(self.tools))
         graph.add_node("knowledge_explorer", self._build_knowledge_explorer_subgraph())
-
-        graph.set_entry_point("router")
-
-        graph.add_conditional_edges(
-            "router",
-            RouterNode(),
-            {
-                "knowledge_explorer": "knowledge_explorer",
-                "tools": "agent",
-                END: "agent",
-            },
+        graph.add_node(
+            "explorer_entry",
+            ExplorerEntryNode(content="Entrando no modo de deep research..."),
         )
+
+        graph.add_edge(START, "agent")
+
         graph.add_conditional_edges(
             "agent",
             RouterNode(),
             {
-                "knowledge_explorer": "knowledge_explorer",
+                "explorer_entry": "explorer_entry",
                 "tools": "tools",
                 END: END,
             },
         )
+        graph.add_edge("explorer_entry", "knowledge_explorer")
         graph.add_edge("tools", "agent")
         graph.add_edge("knowledge_explorer", "agent")
 
@@ -96,8 +91,8 @@ class GraphBuilder:
     def _build_knowledge_explorer_subgraph(self) -> CompiledStateGraph:
         graph = StateGraph(AgentState)
 
-        explorer_model = self.llm_client.model.bind_tools(self.tools)
-        update_model = self.llm_client.model
+        explorer_model = self.llm_client.explorer_model.bind_tools(self.tools)
+        update_model = self.llm_client.explorer_model
 
         graph.add_node("explorer_checklist", ExplorerChecklistNode(update_model))
         graph.add_node("explorer_prepare", ExplorerPrepareNode())

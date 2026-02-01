@@ -6,11 +6,9 @@ from app.application.agent.state_schema import AgentState
 
 
 class RouterNode:
-    def __call__(self, state: AgentState) -> Literal["knowledge_explorer", "tools", END]:
-        if state.subgraph_status == "idle" and state.route_decision:
-            if state.route_decision.subgraph == "knowledge_explorer":
-                return "knowledge_explorer"
-
+    def __call__(
+        self, state: AgentState
+    ) -> Literal["explorer_entry", "tools", END]:
         if isinstance(state, list):
             ai_message = state[-1]
         elif state.messages:
@@ -19,6 +17,14 @@ class RouterNode:
             raise ValueError(f"No messages found in state {state}")
 
         tool_calls = list(getattr(ai_message, "tool_calls", []) or [])
-        if tool_calls:
-            return "tools"
-        return END
+        if not tool_calls:
+            return END
+
+        if any(
+            (call.get("name") if isinstance(call, dict) else call.name)
+            == "run_wow_knowledge_explorer"
+            for call in tool_calls
+        ):
+            return "explorer_entry"
+
+        return "tools"

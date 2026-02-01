@@ -3,6 +3,8 @@ SSE Orchestrator for managing graph execution and streaming with debouncing.
 """
 
 import asyncio
+import json
+from types import SimpleNamespace
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
@@ -115,6 +117,7 @@ class SSEOrchestrator:
             llm_event_context=None,
         )
 
+        custom_tool_result_ids: set[str] = set()
         try:
             async for event in self.graph.astream_events(state, version="v2"):
                 event_kind = event.get("event")
@@ -135,6 +138,45 @@ class SSEOrchestrator:
                     yield format_sse_event(build_langchain_stream_event(event))
                     continue
 
+                if event_kind == "on_chain_stream":
+                    chunk = event_data.get("chunk")
+                    messages = None
+                    if isinstance(chunk, dict):
+                        messages = chunk.get("messages")
+                        if messages is None:
+                            for value in chunk.values():
+                                if isinstance(value, dict) and "messages" in value:
+                                    messages = value.get("messages")
+                                    break
+                    elif hasattr(chunk, "messages"):
+                        messages = chunk.messages
+
+                    if messages:
+                        flush_sse = await self._flush_chunk_buffer(stream_state)
+                        if flush_sse:
+                            yield flush_sse
+                        for message in messages:
+                            content = (
+                                message.get("content")
+                                if isinstance(message, dict)
+                                else getattr(message, "content", None)
+                            )
+                            if content:
+                                chat_event = {
+                                    "event": "on_chat_model_stream",
+                                    "name": event_name,
+                                    "run_id": event.get("run_id", ""),
+                                    "data": {
+                                        "chunk": SimpleNamespace(content=content)
+                                    },
+                                }
+                                sse = await self._handle_llm_chunk(
+                                    chat_event, chat_event["data"], stream_state
+                                )
+                                if sse:
+                                    yield sse
+                        continue
+
                 if event_kind == "on_tool_start":
                     flush_sse = await self._flush_chunk_buffer(stream_state)
                     if flush_sse:
@@ -143,10 +185,43 @@ class SSEOrchestrator:
                     continue
 
                 if event_kind == "on_tool_end":
+                    if event.get("run_id") in custom_tool_result_ids:
+                        continue
                     yield await self._emit_tool_result(event, event_data)
                     continue
 
                 if event_kind == "custom":
+                    custom_kind = event_data.get("kind")
+                    custom_data = event_data.get("data", {})
+                    if custom_kind in {"tool_call", "tool_result"}:
+                        flush_sse = await self._flush_chunk_buffer(stream_state)
+                        if flush_sse:
+                            yield flush_sse
+                        if custom_kind == "tool_call":
+                            tool_name = custom_data.get("tool_name", "tool")
+                            arguments = custom_data.get("arguments", "")
+                            try:
+                                tool_input = json.loads(arguments)
+                            except Exception:
+                                tool_input = arguments
+                            tool_event = {
+                                "event": "on_tool_start",
+                                "name": tool_name,
+                                "run_id": custom_data.get("tool_call_id", ""),
+                                "data": {"input": tool_input},
+                            }
+                            yield await self._emit_tool_call(tool_event, tool_event["data"], tool_name)
+                            continue
+                        custom_tool_result_ids.add(custom_data.get("tool_call_id", ""))
+                        tool_event = {
+                            "event": "on_tool_end",
+                            "name": custom_data.get("tool_name", "tool"),
+                            "run_id": custom_data.get("tool_call_id", ""),
+                            "data": {"output": custom_data.get("content", "")},
+                        }
+                        yield await self._emit_tool_result(tool_event, tool_event["data"])
+                        continue
+
                     flush_sse = await self._flush_chunk_buffer(stream_state)
                     if flush_sse:
                         yield flush_sse
@@ -237,6 +312,13 @@ class SSEOrchestrator:
         return format_sse_event(stream_event)
 
     async def _emit_tool_result(self, event: dict, event_data: dict) -> str:
+        output = event_data.get("output", "")
+        if isinstance(output, dict) and "content" in output:
+            output = output.get("content", "")
+        elif hasattr(output, "content"):
+            output = getattr(output, "content", "")
+        if output is not event_data.get("output"):
+            event = {**event, "data": {**event_data, "output": output}}
         stream_event = build_langchain_stream_event(event)
         await self._notify_observers(stream_event)
         return format_sse_event(stream_event)
