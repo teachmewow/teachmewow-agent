@@ -208,39 +208,7 @@ async def stream_graph_events(
                 continue
 
             if event_kind == "on_chain_stream":
-                chunk = event_data.get("chunk")
-                messages = None
-                if isinstance(chunk, dict):
-                    messages = chunk.get("messages")
-                    if messages is None:
-                        for value in chunk.values():
-                            if isinstance(value, dict) and "messages" in value:
-                                messages = value.get("messages")
-                                break
-                elif hasattr(chunk, "messages"):
-                    messages = chunk.messages
-
-                if messages:
-                    for message in messages:
-                        content = (
-                            message.get("content")
-                            if isinstance(message, dict)
-                            else getattr(message, "content", None)
-                        )
-                        if content:
-                            chat_event = {
-                                "event": "on_chat_model_stream",
-                                "name": event_name,
-                                "run_id": event.get("run_id", ""),
-                                "data": {
-                                    "chunk": SimpleNamespace(content=content)
-                                },
-                            }
-                            stream_handler.emit_llm_delta(content)
-                            yield format_sse_event(
-                                build_langchain_stream_event(chat_event)
-                            )
-                    continue
+                continue
 
 
             if event_kind == "on_tool_start":

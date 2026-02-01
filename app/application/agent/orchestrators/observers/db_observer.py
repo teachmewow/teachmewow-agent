@@ -35,6 +35,7 @@ class DatabaseObserver:
         """
         self.message_repository = message_repository
         self.thread_id = thread_id
+        self._saved_tool_call_ids: set[str] = set()
 
     async def on_event(self, event: StreamEvent) -> None:
         """
@@ -57,7 +58,7 @@ class DatabaseObserver:
         content = json.dumps(output) if isinstance(output, (dict, list)) else str(output)
 
         tool_message = Message(
-            id=f"tool_{tool_call_id}",
+            id=f"tool-{tool_call_id}",
             thread_id=self.thread_id,
             role=MessageRole.TOOL,
             content=content,
@@ -65,6 +66,7 @@ class DatabaseObserver:
             tool_result=content,
         )
         await self.message_repository.save(tool_message)
+        self._saved_tool_call_ids.add(tool_call_id)
 
     async def on_node_complete(self, node: str, messages: list[BaseMessage]) -> None:
         """
@@ -77,6 +79,9 @@ class DatabaseObserver:
             messages: New messages produced by the node
         """
         for message in messages:
+            if isinstance(message, ToolMessage) and message.tool_call_id:
+                if message.tool_call_id in self._saved_tool_call_ids:
+                    continue
             domain_message = self._convert_message(message)
             if domain_message is not None:
                 await self.message_repository.save(domain_message)
@@ -149,7 +154,9 @@ class DatabaseObserver:
     def _convert_tool_message(self, message: ToolMessage) -> Message:
         """Convert ToolMessage to domain Message."""
         return Message(
-            id=str(uuid.uuid4()),
+            id=f"tool-{message.tool_call_id}"
+            if message.tool_call_id
+            else str(uuid.uuid4()),
             thread_id=self.thread_id,
             role=MessageRole.TOOL,
             content=message.content or "",

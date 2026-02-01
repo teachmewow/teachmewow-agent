@@ -139,43 +139,7 @@ class SSEOrchestrator:
                     continue
 
                 if event_kind == "on_chain_stream":
-                    chunk = event_data.get("chunk")
-                    messages = None
-                    if isinstance(chunk, dict):
-                        messages = chunk.get("messages")
-                        if messages is None:
-                            for value in chunk.values():
-                                if isinstance(value, dict) and "messages" in value:
-                                    messages = value.get("messages")
-                                    break
-                    elif hasattr(chunk, "messages"):
-                        messages = chunk.messages
-
-                    if messages:
-                        flush_sse = await self._flush_chunk_buffer(stream_state)
-                        if flush_sse:
-                            yield flush_sse
-                        for message in messages:
-                            content = (
-                                message.get("content")
-                                if isinstance(message, dict)
-                                else getattr(message, "content", None)
-                            )
-                            if content:
-                                chat_event = {
-                                    "event": "on_chat_model_stream",
-                                    "name": event_name,
-                                    "run_id": event.get("run_id", ""),
-                                    "data": {
-                                        "chunk": SimpleNamespace(content=content)
-                                    },
-                                }
-                                sse = await self._handle_llm_chunk(
-                                    chat_event, chat_event["data"], stream_state
-                                )
-                                if sse:
-                                    yield sse
-                        continue
+                    continue
 
                 if event_kind == "on_tool_start":
                     flush_sse = await self._flush_chunk_buffer(stream_state)

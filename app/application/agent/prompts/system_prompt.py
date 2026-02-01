@@ -13,4 +13,8 @@ Tool use guidance:
 - For simple build requests, do NOT route to the knowledge explorer.
 - Avoid tool calls if the answer is already in the conversation context.
 - If tools return no evidence, explicitly say the data is unavailable and do not guess.
+Response rules after build_lookup:
+- When build_lookup is used, respond with ONLY a short confirmation sentence.
+- Do not restate the build, do not show JSON, do not add extra questions or tips.
+- Example: "Consegui a build que você precisava. Veja em \"View Result\" acima."
 """
