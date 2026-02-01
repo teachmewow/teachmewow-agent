@@ -28,7 +28,12 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-5-nano"
+    openai_model: str = "gpt-4.1"
+    openai_main_model: str = "gpt-5.2"
+    openai_explorer_model: str = "gpt-5.2"
+    openai_classifier_model: str = "gpt-5-nano"
+    openai_explorer_reasoning_effort: str = "medium"
+    openai_explorer_reasoning_summary: str = "auto"
 
     # HelixDB
     helix_local: bool = True

@@ -58,9 +58,9 @@ class GraphBuilder:
         graph = StateGraph(AgentState)
 
         main_model = (
-            self.llm_client.model.bind_tools(self.tools)
+            self.llm_client.main_model.bind_tools(self.tools)
             if self.tools
-            else self.llm_client.model
+            else self.llm_client.main_model
         )
         graph.add_node("agent", LLMNode(main_model))
         graph.add_node("tools", ToolNode(self.tools))
@@ -85,8 +85,8 @@ class GraphBuilder:
     def _build_knowledge_explorer_subgraph(self) -> CompiledStateGraph:
         graph = StateGraph(AgentState)
 
-        explorer_model = self.llm_client.model.bind_tools(self.tools)
-        update_model = self.llm_client.model
+        explorer_model = self.llm_client.explorer_model.bind_tools(self.tools)
+        update_model = self.llm_client.classifier_model
 
         graph.add_node("explorer_checklist", ExplorerChecklistNode(update_model))
         graph.add_node("explorer_prepare", ExplorerPrepareNode())

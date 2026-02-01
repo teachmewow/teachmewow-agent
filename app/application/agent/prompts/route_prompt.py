@@ -5,8 +5,10 @@ Decide if the user's request needs deep external knowledge lookup.
 
 Rules:
 - Use subgraph = "knowledge_explorer" when the answer requires WoW-specific knowledge
-  or details not present in the conversation context. Also you MUST create a checklist with 3-6 items. Each item must
-  have id, title, status, evidence.
+  or details not present in the conversation context. Also you MUST create a checklist with 2-5 items.
+- Checklist items must be ordered, dependency-aware, and concrete. If step B depends on step A, A must appear first.
+- Checklist items must be phrased as actionable searches (no filler, no generic placeholders).
+- Each item must have id, title, status, evidence. Start with status="pending" and evidence=[].
 - Use subgraph = "none" for greetings, small talk, or if the answer is already known
   from the provided conversation.
 
@@ -17,12 +19,12 @@ Question: "What is the priority for single target in dungeon for Arms?"
   "checklist": [
     {{
       "id": "1",
-      "title": "Search for arms dungeon best build",
+      "title": "Find the best Arms dungeon build for the current patch",
       "status": "pending",
       "evidence": []}},
     {{
       "id": "2",
-      "title": "Search for arms skill priority for step 1 build for single target.",
+      "title": "Using the dungeon build, identify the single-target priority/rotation",
       "status": "pending",
       "evidence": []}}
   ]

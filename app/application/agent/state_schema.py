@@ -41,6 +41,7 @@ class AgentState(BaseModel):
         wow_role: WoW role context (required: tank, healer, dps)
         route_decision: Decision for routing to a subgraph
         checklist_items: Structured checklist for deep exploration
+        current_checklist_id: Active checklist item id for sequential execution
         subgraph_status: Status of the active subgraph, if any
     """
 
@@ -52,6 +53,7 @@ class AgentState(BaseModel):
     wow_role: str
     route_decision: RoutingDecision | None = None
     checklist_items: list[ChecklistItem] = Field(default_factory=list)
+    current_checklist_id: str | None = None
     subgraph_status: SubgraphStatus = "idle"
 
     class Config:

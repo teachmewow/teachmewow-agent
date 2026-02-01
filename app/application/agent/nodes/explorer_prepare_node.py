@@ -15,6 +15,9 @@ class ExplorerPrepareNode:
         self, state: AgentState, config: RunnableConfig | None = None
     ) -> AgentState:
         checklist_items = self._normalize_checklist(state.checklist_items)
+        current_checklist_id = state.current_checklist_id
+        if not current_checklist_id:
+            current_checklist_id = self._select_first_pending_id(checklist_items)
         stream_writer = get_stream_writer()
         if checklist_items:
             stream_writer(
@@ -25,6 +28,7 @@ class ExplorerPrepareNode:
             )
         return {
             "checklist_items": checklist_items,
+            "current_checklist_id": current_checklist_id,
             "subgraph_status": "running",
         }
 
@@ -43,6 +47,12 @@ class ExplorerPrepareNode:
                 )
             )
         return normalized
+
+    def _select_first_pending_id(self, items: list[ChecklistItem]) -> str | None:
+        for item in items:
+            if item.status != "complete":
+                return item.id
+        return None
 
     def _slugify(self, text: str) -> str:
         slug = re.sub(r"[^a-zA-Z0-9]+", "-", text.strip().lower()).strip("-")

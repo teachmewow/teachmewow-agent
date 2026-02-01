@@ -25,25 +25,53 @@ class ExplorerAgentNode:
         return {"messages": [response]}
 
     def _mount_messages(self, state: AgentState) -> list[BaseMessage]:
-        checklist_text = self._format_checklist(state.checklist_items)
+        checklist_text = self._format_current_item(
+            state.checklist_items, state.current_checklist_id
+        )
+        context_hint = self._build_context_hint(state)
         subgraph_messages = get_subgraph_messages(state.messages)
         return [
             SystemMessage(content=KNOWLEDGE_EXPLORER_SYSTEM_PROMPT),
+            SystemMessage(content=context_hint),
             *subgraph_messages,
             HumanMessage(content=checklist_text),
         ]
 
-    def _format_checklist(self, items: list[ChecklistItem]) -> str:
+    def _format_current_item(
+        self, items: list[ChecklistItem], current_id: str | None
+    ) -> str:
         if not items:
-            return "Checklist: (empty)"
-        lines = ["Checklist:"]
-        for item in items:
-            status = item.status
-            line = f"- [{status}] {item.title} (id={item.id})"
-            lines.append(line)
-            for evidence in item.evidence:
-                lines.append(f"  - evidence: {evidence}")
+            return "Current checklist item: (none)"
+        current = self._find_current_item(items, current_id)
+        if not current:
+            return "Current checklist item: (none)"
+        lines = [
+            "Current checklist item:",
+            f"- [{current.status}] {current.title} (id={current.id})",
+        ]
+        for evidence in current.evidence:
+            lines.append(f"  - evidence: {evidence}")
         return "\n".join(lines)
+
+    def _find_current_item(
+        self, items: list[ChecklistItem], current_id: str | None
+    ) -> ChecklistItem | None:
+        if current_id:
+            for item in items:
+                if item.id == current_id:
+                    return item
+        for item in items:
+            if item.status != "complete":
+                return item
+        return None
+
+    def _build_context_hint(self, state: AgentState) -> str:
+        return (
+            "O usuário esta fazendo perguntas sobre spec, class, role "
+            f"baseado noq veio da requisicao. "
+            f"wow_class={state.wow_class}, wow_spec={state.wow_spec}, "
+            f"wow_role={state.wow_role}."
+        )
 
     async def _stream_llm_response(
         self,

@@ -137,6 +137,8 @@ class ToolNode:
             "wow_spec": state.wow_spec,
             "wow_role": state.wow_role,
         }.items():
-            if key in fields and key not in arguments:
+            if not value:
+                continue
+            if key in fields or key in arguments:
                 arguments[key] = value
         return arguments

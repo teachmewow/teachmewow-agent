@@ -43,10 +43,13 @@ class ExplorerChecklistNode:
         decision = await routing_model.ainvoke(messages, config)
         if isinstance(decision, dict):
             decision = RoutingDecision(**decision)
-        return {
+        update: dict = {
             "route_decision": decision,
             "checklist_items": list(decision.checklist),
         }
+        if not has_explorer_start_marker(state.messages):
+            update["messages"] = [build_explorer_start_marker()]
+        return update
 
     def _acknowledge_run_knowledge_explorer(
         self, state: AgentState
