@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
+
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode as BaseToolNode
-from langgraph.prebuilt.tool_node import ToolCallRequest
 
 
 class ToolNode(BaseToolNode):
@@ -11,7 +12,7 @@ class ToolNode(BaseToolNode):
         super().__init__(tools, awrap_tool_call=self._awrap_tool_call)
 
     async def _awrap_tool_call(
-        self, request: ToolCallRequest, execute
+        self, request: Any, execute
     ) -> ToolMessage:
         updated_request = self._inject_context(request)
         result = await execute(updated_request)

@@ -5,7 +5,7 @@ Agent tools module.
 from langchain_core.tools import BaseTool
 
 from .build_lookup import build_lookup
-from .run_wow_knowledge_explorer import run_wow_knowledge_explorer
+from .build_rag_lookup import build_rag_lookup
 
 
 def get_all_tools() -> list[BaseTool]:
@@ -17,12 +17,12 @@ def get_all_tools() -> list[BaseTool]:
     """
     return [
         build_lookup,
-        run_wow_knowledge_explorer,
+        build_rag_lookup,
     ]
 
 
 __all__ = [
     "build_lookup",
-    "run_wow_knowledge_explorer",
+    "build_rag_lookup",
     "get_all_tools",
 ]

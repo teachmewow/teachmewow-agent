@@ -46,9 +46,11 @@ class StreamHandler:
         self.emit(
             StreamEvent(
                 event="on_tool_start",
-                name=tool_name,
-                run_id=tool_call_id,
-                data={"input": tool_input},
+                data={
+                    "name": tool_name,
+                    "run_id": tool_call_id,
+                    "payload": {"input": tool_input},
+                },
             )
         )
 
@@ -57,18 +59,20 @@ class StreamHandler:
         self.emit(
             StreamEvent(
                 event="on_tool_end",
-                run_id=tool_call_id,
-                data={"output": result},
+                data={
+                    "run_id": tool_call_id,
+                    "payload": {"output": result},
+                },
             )
         )
 
     def emit_node_started(self, node_name: str) -> None:
         """Emit a node started event (on_chain_start)."""
-        self.emit(StreamEvent(event="on_chain_start", name=node_name, data={}))
+        self.emit(StreamEvent(event="on_chain_start", data={"name": node_name}))
 
     def emit_node_finished(self, node_name: str) -> None:
         """Emit a node finished event (on_chain_end)."""
-        self.emit(StreamEvent(event="on_chain_end", name=node_name, data={}))
+        self.emit(StreamEvent(event="on_chain_end", data={"name": node_name}))
 
     def emit_done(self) -> None:
         """Emit a done event."""
@@ -110,11 +114,6 @@ def format_sse_event(event: StreamEvent) -> str:
     data = _safe_json_dumps(
         {
             "event": event.event,
-            "name": event.name,
-            "run_id": event.run_id,
-            "parent_ids": event.parent_ids,
-            "metadata": event.metadata,
-            "tags": event.tags,
             "data": event.data,
         }
     )
@@ -125,15 +124,17 @@ def build_langchain_stream_event(
     event: dict, data_override: dict | None = None
 ) -> StreamEvent:
     """Build a StreamEvent envelope from a LangChain astream_events payload."""
-    data = data_override if data_override is not None else event.get("data", {})
+    payload = data_override if data_override is not None else event.get("data", {})
     return StreamEvent(
         event=event.get("event", ""),
-        name=event.get("name", ""),
-        run_id=event.get("run_id", ""),
-        parent_ids=event.get("parent_ids") or [],
-        metadata=event.get("metadata") or {},
-        tags=event.get("tags") or [],
-        data=_sanitize_for_json(data),
+        data={
+            "name": event.get("name"),
+            "run_id": event.get("run_id"),
+            "parent_ids": event.get("parent_ids") or [],
+            "metadata": event.get("metadata") or {},
+            "tags": event.get("tags") or [],
+            "payload": _sanitize_for_json(payload),
+        },
     )
 
 

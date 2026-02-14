@@ -50,14 +50,15 @@ class DatabaseObserver:
         if event.event != "on_tool_end":
             return
 
-        tool_call_id = event.run_id or ""
+        tool_call_id = str(event.data.get("run_id") or "")
         if not tool_call_id:
             return
 
         if tool_call_id in self._saved_tool_call_ids:
             return
 
-        output = event.data.get("output")
+        payload = event.data.get("payload", {}) if isinstance(event.data, dict) else {}
+        output = payload.get("output") if isinstance(payload, dict) else None
         content = json.dumps(output) if isinstance(output, (dict, list)) else str(output)
 
         self._saved_tool_call_ids.add(tool_call_id)
