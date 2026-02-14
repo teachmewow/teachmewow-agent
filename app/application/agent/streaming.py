@@ -3,6 +3,7 @@ Streaming utilities for adapting LangGraph events to SSE format.
 """
 
 import json
+from types import SimpleNamespace
 from collections.abc import Mapping
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -45,9 +46,11 @@ class StreamHandler:
         self.emit(
             StreamEvent(
                 event="on_tool_start",
-                name=tool_name,
-                run_id=tool_call_id,
-                data={"input": tool_input},
+                data={
+                    "name": tool_name,
+                    "run_id": tool_call_id,
+                    "payload": {"input": tool_input},
+                },
             )
         )
 
@@ -56,18 +59,20 @@ class StreamHandler:
         self.emit(
             StreamEvent(
                 event="on_tool_end",
-                run_id=tool_call_id,
-                data={"output": result},
+                data={
+                    "run_id": tool_call_id,
+                    "payload": {"output": result},
+                },
             )
         )
 
     def emit_node_started(self, node_name: str) -> None:
         """Emit a node started event (on_chain_start)."""
-        self.emit(StreamEvent(event="on_chain_start", name=node_name, data={}))
+        self.emit(StreamEvent(event="on_chain_start", data={"name": node_name}))
 
     def emit_node_finished(self, node_name: str) -> None:
         """Emit a node finished event (on_chain_end)."""
-        self.emit(StreamEvent(event="on_chain_end", name=node_name, data={}))
+        self.emit(StreamEvent(event="on_chain_end", data={"name": node_name}))
 
     def emit_done(self) -> None:
         """Emit a done event."""
@@ -109,11 +114,6 @@ def format_sse_event(event: StreamEvent) -> str:
     data = _safe_json_dumps(
         {
             "event": event.event,
-            "name": event.name,
-            "run_id": event.run_id,
-            "parent_ids": event.parent_ids,
-            "metadata": event.metadata,
-            "tags": event.tags,
             "data": event.data,
         }
     )
@@ -124,19 +124,22 @@ def build_langchain_stream_event(
     event: dict, data_override: dict | None = None
 ) -> StreamEvent:
     """Build a StreamEvent envelope from a LangChain astream_events payload."""
-    data = data_override if data_override is not None else event.get("data", {})
+    payload = data_override if data_override is not None else event.get("data", {})
     return StreamEvent(
         event=event.get("event", ""),
-        name=event.get("name", ""),
-        run_id=event.get("run_id", ""),
-        parent_ids=event.get("parent_ids") or [],
-        metadata=event.get("metadata") or {},
-        tags=event.get("tags") or [],
-        data=_sanitize_for_json(data),
+        data={
+            "name": event.get("name"),
+            "run_id": event.get("run_id"),
+            "parent_ids": event.get("parent_ids") or [],
+            "metadata": event.get("metadata") or {},
+            "tags": event.get("tags") or [],
+            "payload": _sanitize_for_json(payload),
+        },
     )
 
 
 def _try_parse_json(raw: str) -> object:
+    custom_tool_result_ids: set[str] = set()
     try:
         return json.loads(raw)
     except Exception:
@@ -185,6 +188,7 @@ async def stream_graph_events(
     Yields:
         SSE-formatted event strings
     """
+    custom_tool_result_ids: set[str] = set()
     try:
         # Stream the graph execution
         async for event in graph.astream_events(state, version="v2"):
@@ -204,6 +208,10 @@ async def stream_graph_events(
                     )
                 continue
 
+            if event_kind == "on_chain_stream":
+                continue
+
+
             if event_kind == "on_tool_start":
                 tool_input = event_data.get("input", {})
                 stream_handler.emit_tool_call(
@@ -215,7 +223,13 @@ async def stream_graph_events(
                 continue
 
             if event_kind == "on_tool_end":
+                if event.get("run_id") in custom_tool_result_ids:
+                    continue
                 output = event_data.get("output", "")
+                if isinstance(output, dict) and "content" in output:
+                    output = output.get("content", "")
+                elif hasattr(output, "content"):
+                    output = getattr(output, "content", "")
                 stream_handler.emit_tool_result(
                     tool_call_id=event.get("run_id", ""),
                     result=str(output),
@@ -230,6 +244,38 @@ async def stream_graph_events(
 
             if event_kind == "on_chain_end" and event_name:
                 stream_handler.emit_node_finished(event_name)
+                yield format_sse_event(build_langchain_stream_event(event))
+                continue
+
+            if event_kind == "custom":
+                custom_kind = event_data.get("kind")
+                custom_data = event_data.get("data", {})
+                if custom_kind in {"tool_call", "tool_result"}:
+                    if custom_kind == "tool_call":
+                        tool_name = custom_data.get("tool_name", "tool")
+                        arguments = custom_data.get("arguments", "")
+                        try:
+                            tool_input = json.loads(arguments)
+                        except Exception:
+                            tool_input = arguments
+                        tool_event = {
+                            "event": "on_tool_start",
+                            "name": tool_name,
+                            "run_id": custom_data.get("tool_call_id", ""),
+                            "data": {"input": tool_input},
+                        }
+                        yield format_sse_event(build_langchain_stream_event(tool_event))
+                        continue
+                    custom_tool_result_ids.add(custom_data.get("tool_call_id", ""))
+                    tool_event = {
+                        "event": "on_tool_end",
+                        "name": custom_data.get("tool_name", "tool"),
+                        "run_id": custom_data.get("tool_call_id", ""),
+                        "data": {"output": custom_data.get("content", "")},
+                    }
+                    yield format_sse_event(build_langchain_stream_event(tool_event))
+                    continue
+
                 yield format_sse_event(build_langchain_stream_event(event))
                 continue
 

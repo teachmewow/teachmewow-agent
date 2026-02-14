@@ -4,8 +4,8 @@ Agent tools module.
 
 from langchain_core.tools import BaseTool
 
-from .get_spec_info import get_spec_info
-from .helix_search import search_helix
+from .build_lookup import build_lookup
+from .build_rag_lookup import build_rag_lookup
 
 
 def get_all_tools() -> list[BaseTool]:
@@ -15,7 +15,14 @@ def get_all_tools() -> list[BaseTool]:
     Returns:
         List of tool instances
     """
-    return [get_spec_info, search_helix]
+    return [
+        build_lookup,
+        build_rag_lookup,
+    ]
 
 
-__all__ = ["get_spec_info", "search_helix", "get_all_tools"]
+__all__ = [
+    "build_lookup",
+    "build_rag_lookup",
+    "get_all_tools",
+]

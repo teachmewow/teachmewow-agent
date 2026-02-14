@@ -13,8 +13,15 @@ class LLMClient:
     Provides a consistent interface for LLM interactions.
     """
 
-    def __init__(self, model: ChatOpenAI):
-        self._model = model
+    def __init__(
+        self,
+        main_model: ChatOpenAI,
+        explorer_model: ChatOpenAI,
+        classifier_model: ChatOpenAI,
+    ):
+        self._main_model = main_model
+        self._explorer_model = explorer_model
+        self._classifier_model = classifier_model
 
     @classmethod
     def from_settings(cls) -> "LLMClient":
@@ -25,18 +32,41 @@ class LLMClient:
             Configured LLMClient instance
         """
         settings = get_settings()
-        model = ChatOpenAI(
+        main_model = cls._build_model(
             api_key=settings.openai_api_key,
-            model=settings.openai_model,
-            temperature=0.7,
-            streaming=True,
+            model_name=settings.openai_main_model or settings.openai_model,
         )
-        return cls(model=model)
+        explorer_model = cls._build_model(
+            api_key=settings.openai_api_key,
+            model_name=settings.openai_explorer_model or settings.openai_model,
+            reasoning_effort=settings.openai_explorer_reasoning_effort,
+            reasoning_summary=settings.openai_explorer_reasoning_summary,
+        )
+        classifier_model = cls._build_model(
+            api_key=settings.openai_api_key,
+            model_name=settings.openai_classifier_model or settings.openai_model,
+            temperature=0.2,
+        )
+        return cls(
+            main_model=main_model,
+            explorer_model=explorer_model,
+            classifier_model=classifier_model,
+        )
 
     @property
-    def model(self) -> ChatOpenAI:
-        """Get the underlying ChatOpenAI model."""
-        return self._model
+    def main_model(self) -> ChatOpenAI:
+        """Get the model used by the main agent."""
+        return self._main_model
+
+    @property
+    def explorer_model(self) -> ChatOpenAI:
+        """Get the model used by the knowledge explorer."""
+        return self._explorer_model
+
+    @property
+    def classifier_model(self) -> ChatOpenAI:
+        """Get the model used by classifiers/routers."""
+        return self._classifier_model
 
     def with_temperature(self, temperature: float) -> "LLMClient":
         """
@@ -48,10 +78,44 @@ class LLMClient:
         Returns:
             New LLMClient with updated temperature
         """
-        new_model = ChatOpenAI(
-            api_key=self._model.openai_api_key,
-            model=self._model.model_name,
+        main_model = self._clone_model(self._main_model, temperature)
+        explorer_model = self._clone_model(self._explorer_model, temperature)
+        classifier_model = self._clone_model(self._classifier_model, temperature)
+        return LLMClient(
+            main_model=main_model,
+            explorer_model=explorer_model,
+            classifier_model=classifier_model,
+        )
+
+    @staticmethod
+    def _build_model(
+        api_key: str,
+        model_name: str,
+        temperature: float = 0.7,
+        reasoning_effort: str | None = None,
+        reasoning_summary: str | None = None,
+    ) -> ChatOpenAI:
+        extra_args = {}
+        if reasoning_effort is not None or reasoning_summary is not None:
+            reasoning = {}
+            if reasoning_effort is not None:
+                reasoning["effort"] = reasoning_effort
+            if reasoning_summary is not None:
+                reasoning["summary"] = reasoning_summary
+            extra_args["reasoning"] = reasoning
+        return ChatOpenAI(
+            api_key=api_key,
+            model=model_name,
+            temperature=temperature,
+            streaming=True,
+            **extra_args,
+        )
+
+    @staticmethod
+    def _clone_model(model: ChatOpenAI, temperature: float) -> ChatOpenAI:
+        return ChatOpenAI(
+            api_key=model.openai_api_key,
+            model=model.model_name,
             temperature=temperature,
             streaming=True,
         )
-        return LLMClient(model=new_model)
