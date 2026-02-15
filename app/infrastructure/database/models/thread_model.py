@@ -20,6 +20,7 @@ class ThreadModel(Base):
     wow_class: Mapped[str] = mapped_column(String(50), nullable=False)
     wow_spec: Mapped[str] = mapped_column(String(50), nullable=False)
     wow_role: Mapped[str] = mapped_column(String(20), nullable=False)
+    active_build_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

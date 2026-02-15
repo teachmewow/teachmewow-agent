@@ -23,6 +23,7 @@ class BuildModel(Base):
     environment: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     build_mode: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     scenario: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    hero_talent: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
     source: Mapped[str] = mapped_column(String(120), nullable=True)
     import_code: Mapped[str] = mapped_column(String(1024), nullable=False)
     patch: Mapped[str | None] = mapped_column(String(30), nullable=True)

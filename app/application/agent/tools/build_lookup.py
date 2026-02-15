@@ -7,7 +7,7 @@ Returns a build payload compatible with the frontend talent tree renderer.
 from __future__ import annotations
 
 import json
-from typing import Literal
+from typing import Any
 
 from langchain_core.tools import tool
 from sqlalchemy import select
@@ -19,58 +19,81 @@ from app.infrastructure.helix.client import get_helix_client
 
 @tool
 async def build_lookup(
-    environment: Literal["dg", "raid", "pvp"],
-    mode: Literal["aoe", "single", "3x3", "2x2"],
-    wow_class: str,
-    wow_spec: str,
-    wow_role: str,
-    scenario: str | None = None,
-    limit: int = 1,
+    build_id: str,
+    char_info: dict[str, str],
+    thread_id: str | None = None,
+    active_build_id: str | None = None,
 ) -> str:
     """
-    Lookup builds and return JSON payload for talent tree rendering.
+    Resolve build metadata by stable build_id.
     """
-    normalized_env = _normalize_environment(environment)
-    normalized_mode = _normalize_build_mode(mode)
-    normalized_class = str(wow_class or "").strip().lower()
-    normalized_spec = str(wow_spec or "").strip().lower()
-    normalized_role = str(wow_role or "").strip().lower()
-    normalized_scenario = scenario or f"{normalized_env} {normalized_mode}"
+    resolved = await fetch_build_view_by_id(build_id=build_id, char_info=char_info)
+    if resolved is None:
+        return "No results found."
+    return json.dumps(
+        {
+            "tool": "build_lookup",
+            "build_id": resolved["build_id"],
+            "hero_talent": resolved["hero_talent"],
+            "scenario": resolved["scenario"],
+            "patch": resolved["patch"],
+            "source": resolved["source"],
+            "feedback": (
+                "User is looking to the build on the UI, you should say: "
+                "'Here is the build you are looking for' + some short description "
+                "of the build + link to the source of the build."
+            ),
+        },
+        ensure_ascii=True,
+    )
+
+
+async def fetch_build_view_by_id(
+    build_id: str,
+    char_info: dict[str, str],
+) -> dict[str, Any] | None:
+    normalized_class = str(char_info.get("class", "")).strip().lower()
+    normalized_spec = str(char_info.get("spec", "")).strip().lower()
+    normalized_role = str(char_info.get("role", "")).strip().lower()
+    normalized_build_id = str(build_id or "").strip()
+    if not normalized_build_id:
+        return None
 
     async with get_session() as session:
         query = (
             select(BuildModel)
+            .where(BuildModel.id == normalized_build_id)
             .where(BuildModel.wow_class == normalized_class)
             .where(BuildModel.wow_spec == normalized_spec)
             .where(BuildModel.wow_role == normalized_role)
-            .where(BuildModel.environment == normalized_env)
-            .where(BuildModel.build_mode == normalized_mode)
-            .where(BuildModel.scenario == normalized_scenario)
-            .order_by(BuildModel.updated_at.desc())
-            .limit(max(limit, 1))
+            .limit(1)
         )
         result = await session.execute(query)
         build = result.scalars().first()
 
     if not build:
-        return "No results found."
+        return None
 
     tree_payload = _normalize_tree_payload(build.tree_payload, build.tree_snapshot_id)
     if tree_payload is None:
         tree_payload = _build_tree_payload(build)
-    output = {
-        "tool": "build_lookup",
+
+    return {
+        "build_id": build.id,
+        "hero_talent": str(build.hero_talent or ""),
+        "scenario": str(build.scenario or ""),
+        "source": str(build.source or ""),
+        "patch": str(build.patch or ""),
         "build": {
             "importString": build.import_code,
-            "specId": normalized_spec,
-            "scenario": normalized_scenario,
-            "source": build.source or "",
+            "specId": str(build.wow_spec or normalized_spec),
+            "scenario": str(build.scenario or ""),
+            "source": str(build.source or ""),
             "updatedAt": build.updated_at.isoformat() if build.updated_at else None,
-            "patch": build.patch or "",
+            "patch": str(build.patch or ""),
             "trees": tree_payload.get("trees", []),
         },
     }
-    return json.dumps(output, ensure_ascii=True)
 
 
 def _build_tree_payload(build: BuildModel) -> dict:

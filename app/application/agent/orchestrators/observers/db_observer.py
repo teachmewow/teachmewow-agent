@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
-from app.application.agent.state_schema import StreamEvent
 from app.domain import Message, MessageRole, ToolCall
+from app.domain.repositories import ThreadRepository
 from app.domain.repositories import MessageRepository
 
 
@@ -24,6 +24,7 @@ class DatabaseObserver:
     def __init__(
         self,
         message_repository: MessageRepository,
+        thread_repository: ThreadRepository,
         thread_id: str,
     ):
         """
@@ -34,48 +35,38 @@ class DatabaseObserver:
             thread_id: ID of the conversation thread
         """
         self.message_repository = message_repository
+        self.thread_repository = thread_repository
         self.thread_id = thread_id
         self._saved_tool_call_ids: set[str] = set()
+        self._saved_ai_signatures: set[str] = set()
 
-    async def on_event(self, event: StreamEvent) -> None:
+    async def on_event(self, event) -> None:
         """
         Called when a stream event is processed.
 
-        Persists tool results as they happen to ensure tool messages
-        are available in history for subsequent LLM calls.
+        No-op for persistence. Tool results must be persisted only from
+        LangChain ToolMessage objects on node completion so tool_call_id
+        stays aligned with assistant tool_calls.
 
         Args:
             event: The stream event that was processed
         """
-        if event.event != "on_tool_end":
-            return
+        return
 
-        tool_call_id = str(event.data.get("run_id") or "")
-        if not tool_call_id:
-            return
-
-        if tool_call_id in self._saved_tool_call_ids:
-            return
-
-        payload = event.data.get("payload", {}) if isinstance(event.data, dict) else {}
-        output = payload.get("output") if isinstance(payload, dict) else None
-        content = json.dumps(output) if isinstance(output, (dict, list)) else str(output)
-
-        self._saved_tool_call_ids.add(tool_call_id)
-
-        tool_message = Message(
-            id=f"tool-{tool_call_id}",
-            thread_id=self.thread_id,
-            role=MessageRole.TOOL,
-            content=content,
-            tool_call_id=tool_call_id,
-            tool_result=content,
-        )
+    async def _persist_active_build_id(self, content: str) -> None:
         try:
-            await self.message_repository.save(tool_message)
+            parsed = json.loads(content)
         except Exception:
-            self._saved_tool_call_ids.discard(tool_call_id)
-            raise
+            return
+        if not isinstance(parsed, dict):
+            return
+        tool_name = parsed.get("tool")
+        if tool_name != "build_lookup":
+            return
+        build_id = parsed.get("build_id")
+        if not isinstance(build_id, str) or not build_id.strip():
+            return
+        await self.thread_repository.set_active_build_id(self.thread_id, build_id)
 
     async def on_node_complete(self, node: str, messages: list[BaseMessage]) -> None:
         """
@@ -88,6 +79,12 @@ class DatabaseObserver:
             messages: New messages produced by the node
         """
         for message in messages:
+            if isinstance(message, AIMessage):
+                signature = self._build_ai_signature(message)
+                if signature in self._saved_ai_signatures:
+                    continue
+                self._saved_ai_signatures.add(signature)
+
             if isinstance(message, ToolMessage) and message.tool_call_id:
                 tool_call_id = message.tool_call_id
                 if tool_call_id in self._saved_tool_call_ids:
@@ -97,6 +94,9 @@ class DatabaseObserver:
                 if domain_message is not None:
                     try:
                         await self.message_repository.save(domain_message)
+                        await self._persist_active_build_id(
+                            content=domain_message.tool_result or domain_message.content
+                        )
                     except Exception:
                         self._saved_tool_call_ids.discard(tool_call_id)
                         raise
@@ -105,6 +105,13 @@ class DatabaseObserver:
             domain_message = self._convert_message(message)
             if domain_message is not None:
                 await self.message_repository.save(domain_message)
+
+    def _build_ai_signature(self, message: AIMessage) -> str:
+        payload = {
+            "content": message.content or "",
+            "tool_calls": message.tool_calls or [],
+        }
+        return json.dumps(payload, sort_keys=True, ensure_ascii=True)
 
     async def on_stream_complete(self, full_response: str) -> None:
         """

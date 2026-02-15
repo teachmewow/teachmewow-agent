@@ -7,47 +7,31 @@ Combines build lookup with guide evidence retrieval from HelixDB.
 from __future__ import annotations
 
 import json
-from typing import Literal
 
 from langchain_core.tools import tool
 
 from app.infrastructure.helix.client import get_helix_client
 
-from .build_lookup import build_lookup
+from .build_lookup import fetch_build_view_by_id
 
 
 @tool
 async def build_rag_lookup(
     question: str,
-    environment: Literal["dg", "raid", "pvp"],
-    mode: Literal["aoe", "single", "3x3", "2x2"],
-    wow_class: str,
-    wow_spec: str,
-    wow_role: str,
-    scenario: str | None = None,
+    build_id: str,
+    char_info: dict[str, str],
 ) -> str:
     """
     Resolve a build and return guide evidence for Q&A grounding.
     """
-    build_result = await build_lookup.ainvoke(
-        {
-            "environment": environment,
-            "mode": mode,
-            "wow_class": wow_class,
-            "wow_spec": wow_spec,
-            "wow_role": wow_role,
-            "scenario": scenario,
-            "limit": 1,
-        }
-    )
-    if not isinstance(build_result, str) or build_result == "No results found.":
+    resolved = await fetch_build_view_by_id(build_id=build_id, char_info=char_info)
+    if resolved is None:
         return "No build context found for the requested filters."
 
-    parsed_build = _safe_parse_json(build_result)
-    if not isinstance(parsed_build, dict):
-        return "Build was found, but the payload is invalid."
-
     helix_client = get_helix_client()
+    wow_class = str(char_info.get("class", "")).strip().lower()
+    wow_spec = str(char_info.get("spec", "")).strip().lower()
+    wow_role = str(char_info.get("role", "")).strip().lower()
     claims = _query_helix(
         helix_client=helix_client,
         query_name="SearchClaimChunksByText",
@@ -75,21 +59,14 @@ async def build_rag_lookup(
 
     payload = {
         "tool": "build_rag_lookup",
-        "build": parsed_build.get("build", {}),
+        "build_id": resolved["build_id"],
+        "build": resolved.get("build", {}),
         "evidence": {
             "claims": claims,
             "procedures": procedures,
         },
     }
     return json.dumps(payload, ensure_ascii=True)
-
-
-def _safe_parse_json(value: str) -> dict | None:
-    try:
-        parsed = json.loads(value)
-    except Exception:
-        return None
-    return parsed if isinstance(parsed, dict) else None
 
 
 def _query_helix(helix_client, query_name: str, params: dict) -> list[dict]:

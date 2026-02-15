@@ -26,11 +26,12 @@ class LLMNode:
         ] + state.messages
 
     def _build_context_hint(self, state: AgentState) -> str:
+        char_info = state.char_info
         return (
-            "O usuário esta fazendo perguntas sobre spec, class, role "
-            f"baseado noq veio da requisicao. "
-            f"wow_class={state.wow_class}, wow_spec={state.wow_spec}, "
-            f"wow_role={state.wow_role}."
+            "O usuário esta fazendo perguntas sobre WoW com contexto fixo da sessão. "
+            f"class={char_info.wow_class}, spec={char_info.spec}, role={char_info.role}. "
+            f"active_build_id={state.active_build_id or 'none'}; "
+            f"candidate_build_ids={state.candidate_build_ids}."
         )
     
     async def _stream_llm_response(
