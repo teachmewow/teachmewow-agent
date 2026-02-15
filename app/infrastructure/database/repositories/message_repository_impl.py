@@ -5,6 +5,7 @@ PostgreSQL implementation of MessageRepository.
 from datetime import datetime
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.entities import Message, ToolCall
@@ -73,12 +74,51 @@ class MessageRepositoryImpl:
         )
 
     async def save(self, message: Message) -> Message:
-        """Save a message to the database."""
+        """
+        Save a message to the database with idempotent semantics.
+
+        Uses Postgres ON CONFLICT DO NOTHING on primary key to guarantee
+        safe replays/retries in streaming flows. If the row already exists,
+        returns the existing persisted message.
+        """
         model = self._to_model(message)
-        self.session.add(model)
-        await self.session.flush()
-        await self.session.refresh(model)
-        return self._to_entity(model)
+        values = {
+            "id": model.id,
+            "thread_id": model.thread_id,
+            "role": model.role,
+            "content": model.content,
+            "timestamp": model.timestamp,
+            "tool_calls": model.tool_calls,
+            "tool_call_id": model.tool_call_id,
+            "tool_result": model.tool_result,
+            "reasoning": model.reasoning,
+            "token_count": model.token_count,
+        }
+        stmt = (
+            insert(MessageModel)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=[MessageModel.id])
+            .returning(MessageModel.id)
+        )
+        result = await self.session.execute(stmt)
+        inserted_id = result.scalar_one_or_none()
+
+        if inserted_id is None:
+            existing = await self.get_by_id(message.id)
+            if existing is not None:
+                return existing
+            # Defensive fallback: if row vanished between conflict and read, retry once.
+            retry = await self.session.execute(stmt)
+            retry_id = retry.scalar_one_or_none()
+            if retry_id is None:
+                raise RuntimeError(
+                    f"Failed to persist message id={message.id}: conflict without persisted row"
+                )
+
+        persisted = await self.get_by_id(message.id)
+        if persisted is None:
+            raise RuntimeError(f"Failed to read persisted message id={message.id}")
+        return persisted
 
     async def save_many(self, messages: list[Message]) -> list[Message]:
         """Save multiple messages to the database."""

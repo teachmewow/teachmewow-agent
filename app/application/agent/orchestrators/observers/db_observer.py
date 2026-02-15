@@ -3,6 +3,7 @@ Database observer for persisting messages during streaming.
 """
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -11,6 +12,8 @@ from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from app.domain import Message, MessageRole, ToolCall
 from app.domain.repositories import ThreadRepository
 from app.domain.repositories import MessageRepository
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseObserver:
@@ -93,6 +96,18 @@ class DatabaseObserver:
                 domain_message = self._convert_message(message)
                 if domain_message is not None:
                     try:
+                        existing = await self.message_repository.get_by_id(
+                            domain_message.id
+                        )
+                        if existing is not None:
+                            logger.info(
+                                "Skipping duplicate tool message persistence: "
+                                "thread_id=%s tool_call_id=%s message_id=%s",
+                                self.thread_id,
+                                tool_call_id,
+                                domain_message.id,
+                            )
+                            continue
                         await self.message_repository.save(domain_message)
                         await self._persist_active_build_id(
                             content=domain_message.tool_result or domain_message.content

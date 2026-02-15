@@ -4,6 +4,7 @@ SSE Orchestrator for managing graph execution and streaming with debouncing.
 
 import asyncio
 import json
+import logging
 from types import SimpleNamespace
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from .observers.base import StreamObserver
 # Debounce interval for LLM chunks (in seconds)
 DEBOUNCE_INTERVAL_MS = 50
 DEBOUNCE_INTERVAL_S = DEBOUNCE_INTERVAL_MS / 1000
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -33,6 +35,7 @@ class _StreamState:
     last_flush_time: float
     total_message_count: int
     llm_event_context: dict | None
+    seen_message_keys: set[str]
 
 
 class SSEOrchestrator:
@@ -115,6 +118,7 @@ class SSEOrchestrator:
             last_flush_time=self._now(),
             total_message_count=len(state.messages),
             llm_event_context=None,
+            seen_message_keys=self._build_seen_message_keys(state.messages),
         )
 
         custom_tool_result_ids: set[str] = set()
@@ -220,6 +224,12 @@ class SSEOrchestrator:
             yield format_sse_event(done_event)
 
         except Exception as e:
+            logger.exception(
+                "SSE stream failed: thread_id=%s user_id=%s error=%s",
+                state.thread_id,
+                state.user_id,
+                e,
+            )
             # Notify observers of error
             await self._notify_error(e)
 
@@ -291,14 +301,17 @@ class SSEOrchestrator:
         self, event_data: dict, node: str, stream_state: _StreamState
     ) -> None:
         new_messages, updated_count = self._extract_new_messages(
-            event_data, stream_state.total_message_count
+            event_data, stream_state.total_message_count, stream_state.seen_message_keys
         )
         stream_state.total_message_count = updated_count
         if new_messages:
             await self._notify_node_complete(node, new_messages)
 
     def _extract_new_messages(
-        self, event_data: dict, total_message_count: int
+        self,
+        event_data: dict,
+        total_message_count: int,
+        seen_message_keys: set[str],
     ) -> tuple[list[BaseMessage], int]:
         """
         Extract new messages produced by a node from LangGraph event data.
@@ -311,12 +324,52 @@ class SSEOrchestrator:
         if not messages:
             return [], total_message_count
 
+        # Keep count-based branch for performance when stream is monotonic,
+        # then filter by seen message keys to guarantee "save only new".
+        candidate_messages: list[BaseMessage]
         if len(messages) > total_message_count:
-            new_messages = messages[total_message_count:]
-            return new_messages, len(messages)
+            candidate_messages = messages[total_message_count:]
+            updated_count = len(messages)
+        else:
+            # Some LangGraph nodes emit delta payloads or branch-local snapshots
+            # with non-monotonic lengths; treat as candidates and filter by key.
+            candidate_messages = messages
+            updated_count = max(total_message_count, len(messages))
 
-        # If messages length is not greater, assume it's already a delta
-        return messages, total_message_count + len(messages)
+        new_messages: list[BaseMessage] = []
+        for message in candidate_messages:
+            key = self._message_key(message)
+            if not key:
+                continue
+            if key in seen_message_keys:
+                continue
+            seen_message_keys.add(key)
+            new_messages.append(message)
+
+        return new_messages, updated_count
+
+    def _build_seen_message_keys(self, messages: list[BaseMessage]) -> set[str]:
+        keys: set[str] = set()
+        for message in messages:
+            key = self._message_key(message)
+            if key:
+                keys.add(key)
+        return keys
+
+    def _message_key(self, message: BaseMessage) -> str | None:
+        message_type = getattr(message, "type", None) or message.__class__.__name__
+        message_id = getattr(message, "id", None)
+        if isinstance(message_id, str) and message_id:
+            return f"{message_type}:{message_id}"
+
+        if message_type == "tool":
+            tool_call_id = getattr(message, "tool_call_id", None)
+            if isinstance(tool_call_id, str) and tool_call_id:
+                return f"tool_call:{tool_call_id}"
+
+        content = getattr(message, "content", "")
+        tool_calls = getattr(message, "tool_calls", None)
+        return f"{message_type}:{content}:{tool_calls}"
 
     def _get_messages_from_event_data(self, event_data: dict) -> list[BaseMessage]:
         """
