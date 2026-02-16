@@ -57,11 +57,14 @@ class MessageMapper:
 
             if isinstance(langchain_msg, ToolMessage):
                 tool_call_id = str(langchain_msg.tool_call_id or "")
-                if pending_tool_calls:
-                    if tool_call_id not in pending_tool_calls:
-                        # Skip corrupted legacy tool message not tied to pending calls.
-                        continue
-                    pending_tool_calls.remove(tool_call_id)
+                if not pending_tool_calls:
+                    # Tool messages without an immediately preceding AI tool_calls
+                    # chain are invalid for model history; skip corrupted records.
+                    continue
+                if tool_call_id not in pending_tool_calls:
+                    # Skip corrupted legacy tool message not tied to pending calls.
+                    continue
+                pending_tool_calls.remove(tool_call_id)
                 result.append(langchain_msg)
                 continue
 

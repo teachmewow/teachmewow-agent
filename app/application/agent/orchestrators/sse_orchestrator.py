@@ -21,10 +21,11 @@ from .runtime import (
     ChunkFlusher,
     Debouncer,
     EmitPipeline,
+    EventContractValidator,
     MapStage,
-    NodeMessageTracker,
     NotifyStage,
     ObserverNotifierFacade,
+    PersistenceFacade,
     PreFlushStage,
     SerializeStage,
 )
@@ -44,7 +45,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class _RuntimeState:
     accumulator: ChunkAccumulator
-    tracker: NodeMessageTracker
+    persistence: PersistenceFacade
     last_flush_time: float
 
 
@@ -69,6 +70,7 @@ class SSEOrchestrator:
         self._notifier = ObserverNotifierFacade()
         self._debouncer = Debouncer(interval_s=DEBOUNCE_INTERVAL_S, now_fn=self._now)
         self._flusher = ChunkFlusher()
+        self._validator = EventContractValidator()
         self._default_strategy: StreamEventStrategy = DefaultPassThroughStrategy()
         self._event_strategies = create_default_strategy_registry()
 
@@ -105,17 +107,29 @@ class SSEOrchestrator:
         """
         runtime_state = _RuntimeState(
             accumulator=ChunkAccumulator(),
-            tracker=NodeMessageTracker(state.messages),
+            persistence=PersistenceFacade(),
             last_flush_time=self._now(),
         )
         emit_pipeline = self._build_emit_pipeline(runtime_state)
 
         try:
             async for event in self.graph.astream_events(state, version="v2"):
-                event_kind = str(event.get("event") or "")
-                raw_event_data = event.get("data", {})
+                event_kind = str(event["event"])
+                raw_event_data = event.get("data")
                 event_data = raw_event_data if isinstance(raw_event_data, dict) else {}
                 event_name = str(event.get("name") or "")
+
+                if event_kind in {
+                    "on_chat_model_stream",
+                    "on_chat_model_end",
+                    "on_tool_start",
+                    "on_tool_end",
+                }:
+                    self._validator.validate(event)
+                    await self._handle_persistence_side_effects(
+                        event_kind, event, event_data, runtime_state
+                    )
+
                 strategy = self._event_strategies.get(event_kind, self._default_strategy)
                 emitted = await strategy.handle(
                     event=event,
@@ -132,6 +146,7 @@ class SSEOrchestrator:
             flush_sse = await self._flush_accumulator(runtime_state, emit_pipeline)
             if flush_sse:
                 yield flush_sse
+            runtime_state.persistence.assert_no_pending()
 
             # Notify observers that streaming is complete
             await self._notifier.notify_complete(runtime_state.accumulator.full_response)
@@ -145,6 +160,8 @@ class SSEOrchestrator:
                 yield sse
 
         except Exception as e:
+            for partial_event in runtime_state.persistence.on_error():
+                await self._notifier.notify_event(partial_event)
             logger.exception(
                 "SSE stream failed: thread_id=%s user_id=%s error=%s",
                 state.thread_id,
@@ -164,8 +181,8 @@ class SSEOrchestrator:
     async def _process_llm_stream_chunk(
         self, event: dict, event_data: dict, runtime_state: _RuntimeState
     ) -> list[str]:
-        chunk = event_data.get("chunk")
-        if not (chunk and hasattr(chunk, "content") and chunk.content):
+        chunk = event_data["chunk"]
+        if not chunk.content:
             return []
 
         runtime_state.accumulator.append(content=chunk.content, event_context=event)
@@ -178,21 +195,19 @@ class SSEOrchestrator:
         return [flushed] if flushed else []
 
     async def _emit_tool_result(self, event: dict, event_data: dict) -> StreamEvent:
-        output = event_data.get("output", "")
+        output = event_data["output"]
         if isinstance(output, dict) and "content" in output:
-            output = output.get("content", "")
+            output = output["content"]
         elif hasattr(output, "content"):
-            output = getattr(output, "content", "")
-        if output is not event_data.get("output"):
+            output = output.content
+        if output is not event_data["output"]:
             event = {**event, "data": {**event_data, "output": output}}
         return build_langchain_stream_event(event)
 
     async def _process_chain_end(
         self, event_data: dict, node: str, runtime_state: _RuntimeState
     ) -> None:
-        new_messages = runtime_state.tracker.extract_new_messages(event_data)
-        if new_messages:
-            await self._notifier.notify_node_complete(node, new_messages)
+        return
 
     async def emit_generic_event(
         self, event: dict, stream_state: _RuntimeState, *, flush_before: bool = False
@@ -219,6 +234,11 @@ class SSEOrchestrator:
         self, event: dict, event_data: dict, stream_state: _RuntimeState
     ) -> list[str]:
         return await self._process_llm_stream_chunk(event, event_data, stream_state)
+
+    async def process_llm_stream_end(
+        self, event: dict, event_data: dict, stream_state: _RuntimeState
+    ) -> list[str]:
+        return []
 
     async def process_chain_end(
         self, event_data: dict, node: str, stream_state: _RuntimeState
@@ -253,3 +273,24 @@ class SSEOrchestrator:
         if not emitted:
             return None
         return emitted[-1]
+
+    async def _handle_persistence_side_effects(
+        self,
+        event_kind: str,
+        event: dict,
+        event_data: dict,
+        runtime_state: _RuntimeState,
+    ) -> None:
+        if event_kind == "on_chat_model_stream":
+            runtime_state.persistence.on_chat_model_stream(event, event_data)
+            return
+        if event_kind == "on_chat_model_end":
+            persist_event = runtime_state.persistence.on_chat_model_end(event, event_data)
+            await self._notifier.notify_event(persist_event)
+            return
+        if event_kind == "on_tool_start":
+            runtime_state.persistence.on_tool_start(event, event_data)
+            return
+        if event_kind == "on_tool_end":
+            persist_event = runtime_state.persistence.on_tool_end(event, event_data)
+            await self._notifier.notify_event(persist_event)

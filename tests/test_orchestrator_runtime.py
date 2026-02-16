@@ -3,18 +3,17 @@ import types
 
 sys.modules.setdefault("helix", types.ModuleType("helix"))
 
-from langchain_core.messages import AIMessage, ToolMessage
-
 from app.application.agent.state_schema import StreamEvent
 from app.application.agent.orchestrators.runtime import (
     ChunkAccumulator,
     ChunkFlusher,
     Debouncer,
     EmitPipeline,
+    EventContractValidator,
     MapStage,
-    NodeMessageTracker,
     NotifyStage,
     ObserverNotifierFacade,
+    PersistenceFacade,
     PreFlushStage,
     SerializeStage,
 )
@@ -42,22 +41,6 @@ def test_chunk_flusher_builds_stream_event_from_context() -> None:
     assert event is not None
     assert event.event == "on_chat_model_stream"
     assert event.data.get("payload", {}).get("chunk", {}).get("content") == "hello"
-
-
-def test_node_message_tracker_deduplicates_messages() -> None:
-    initial_ai = AIMessage(content="init", id="ai-1")
-    tracker = NodeMessageTracker([initial_ai])
-
-    new_ai = AIMessage(content="new", id="ai-2")
-    duplicate_ai = AIMessage(content="init", id="ai-1")
-    event_data = {"output": {"messages": [initial_ai, new_ai, duplicate_ai]}}
-
-    first = tracker.extract_new_messages(event_data)
-    second = tracker.extract_new_messages(event_data)
-
-    assert len(first) == 1
-    assert getattr(first[0], "id", "") == "ai-2"
-    assert second == []
 
 
 async def test_emit_pipeline_runs_stages_in_order() -> None:
@@ -102,9 +85,57 @@ async def test_emit_pipeline_runs_stages_in_order() -> None:
     assert len(emitted) == 2
 
 
-def test_node_message_tracker_handles_tool_message_key() -> None:
-    initial = ToolMessage(content="x", tool_call_id="call-1")
-    tracker = NodeMessageTracker([initial])
-    event_data = {"messages": [ToolMessage(content="x", tool_call_id="call-1")]}
+def test_event_contract_validator_validates_stream_events() -> None:
+    validator = EventContractValidator()
 
-    assert tracker.extract_new_messages(event_data) == []
+    class _Chunk:
+        content = "delta"
+
+    validator.validate(
+        {
+            "event": "on_chat_model_stream",
+            "run_id": "run-1",
+            "data": {"chunk": _Chunk()},
+        }
+    )
+
+
+def test_persistence_facade_builds_ai_and_tool_events() -> None:
+    facade = PersistenceFacade()
+
+    class _Chunk:
+        def __init__(self, content: str):
+            self.content = content
+
+    facade.on_chat_model_stream(
+        {"event": "on_chat_model_stream", "run_id": "run-ai"},
+        {"chunk": _Chunk("hel")},
+    )
+    facade.on_chat_model_stream(
+        {"event": "on_chat_model_stream", "run_id": "run-ai"},
+        {"chunk": _Chunk("lo")},
+    )
+    ai_event = facade.on_chat_model_end(
+        {"event": "on_chat_model_end", "run_id": "run-ai"},
+        {
+            "output": {
+                "content": "hello",
+                "tool_calls": [{"id": "call_x", "name": "x", "args": {}}],
+            }
+        },
+    )
+    assert ai_event.event == "persist_ai_message"
+    assert ai_event.data["content"] == "hello"
+    assert ai_event.data["tool_calls"][0]["id"] == "call_x"
+
+    facade.on_tool_start(
+        {"event": "on_tool_start", "run_id": "run-tool", "name": "x"},
+        {"input": {}},
+    )
+    tool_event = facade.on_tool_end(
+        {"event": "on_tool_end", "run_id": "run-tool"},
+        {"output": "ok"},
+    )
+    assert tool_event.event == "persist_tool_message"
+    assert tool_event.data["name"] == "x"
+    assert tool_event.data["tool_call_id"] == "call_x"

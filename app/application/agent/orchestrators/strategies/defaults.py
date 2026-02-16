@@ -46,7 +46,7 @@ class ChatModelEndStrategy:
         stream_state,
         actions: StreamOrchestratorActions,
     ) -> list[str]:
-        return []
+        return await actions.process_llm_stream_end(event, event_data, stream_state)
 
 
 class IgnoreEventStrategy:

@@ -26,6 +26,10 @@ class StreamOrchestratorActions(Protocol):
         self, event: dict, event_data: dict, stream_state: Any
     ) -> list[str]: ...
 
+    async def process_llm_stream_end(
+        self, event: dict, event_data: dict, stream_state: Any
+    ) -> list[str]: ...
+
     async def process_chain_end(
         self, event_data: dict, node: str, stream_state: Any
     ) -> None: ...
