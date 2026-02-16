@@ -34,6 +34,7 @@ class Thread:
     wow_class: WowClass
     wow_spec: WowSpec
     wow_role: str
+    active_build_id: str | None = None
     title: str | None = None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)

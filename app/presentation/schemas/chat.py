@@ -5,6 +5,15 @@ Pydantic schemas for chat API requests and responses.
 from pydantic import BaseModel, Field
 
 
+class CharInfoRequest(BaseModel):
+    wow_class: str = Field(..., alias="class", description="WoW class context")
+    spec: str = Field(..., description="WoW specialization context")
+    role: str = Field(..., description="WoW role context (tank/healer/dps)")
+
+    class Config:
+        populate_by_name = True
+
+
 class SendMessageRequest(BaseModel):
     """Request schema for sending a message."""
 
@@ -15,12 +24,7 @@ class SendMessageRequest(BaseModel):
     streaming: bool = Field(default=True, description="Whether to stream the response")
 
     # Required WoW context
-    wow_class: str = Field(..., alias="class", description="WoW class context")
-    spec: str = Field(..., description="WoW specialization context")
-    role: str = Field(..., description="WoW role context (tank/healer/dps)")
-
-    class Config:
-        populate_by_name = True
+    char_info: CharInfoRequest = Field(..., description="Character context")
 
 
 class MessageResponse(BaseModel):

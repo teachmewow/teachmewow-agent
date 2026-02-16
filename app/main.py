@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.infrastructure.config import get_settings
 from app.lifespan import lifespan
-from app.presentation import chat_router, threads_router
+from app.presentation import builds_router, chat_router, threads_router
 
 
 def create_app() -> FastAPI:
@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(chat_router)
     app.include_router(threads_router)
+    app.include_router(builds_router)
 
     # Health check endpoint
     @app.get("/health")

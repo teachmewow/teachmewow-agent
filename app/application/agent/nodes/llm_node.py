@@ -19,7 +19,20 @@ class LLMNode:
 
     def mount_chat_history(self, state: AgentState) -> str:
         """Organize the system prompt based on the state."""
-        return [SystemMessage(content=AGENT_SYSTEM_PROMPT)] + state.messages
+        context_hint = self._build_context_hint(state)
+        return [
+            SystemMessage(content=AGENT_SYSTEM_PROMPT),
+            SystemMessage(content=context_hint),
+        ] + state.messages
+
+    def _build_context_hint(self, state: AgentState) -> str:
+        char_info = state.char_info
+        return (
+            "O usuário esta fazendo perguntas sobre WoW com contexto fixo da sessão. "
+            f"class={char_info.wow_class}, spec={char_info.spec}, role={char_info.role}. "
+            f"active_build_id={state.active_build_id or 'none'}; "
+            f"candidate_build_ids={state.candidate_build_ids}."
+        )
     
     async def _stream_llm_response(
         self,

@@ -27,6 +27,11 @@ async def get_db_session() -> AsyncSession:
     async with factory() as session:
         try:
             yield session
+            # Streaming handlers may swallow exceptions and emit SSE error events.
+            # If flush failed earlier, SQLAlchemy session becomes inactive and must be rolled back.
+            if not session.sync_session.is_active:
+                await session.rollback()
+                return
             await session.commit()
         except Exception:
             await session.rollback()

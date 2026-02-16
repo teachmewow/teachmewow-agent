@@ -40,11 +40,38 @@ class MessageMapper:
             - SYSTEM → SystemMessage
         """
         result: list[BaseMessage] = []
+        pending_tool_calls: set[str] = set()
 
         for msg in messages:
             langchain_msg = MessageMapper._convert_single(msg)
-            if langchain_msg is not None:
+            if langchain_msg is None:
+                continue
+
+            if isinstance(langchain_msg, AIMessage):
+                pending_tool_calls = {
+                    str(tc.get("id") or "") for tc in (langchain_msg.tool_calls or [])
+                }
+                pending_tool_calls = {tc for tc in pending_tool_calls if tc}
                 result.append(langchain_msg)
+                continue
+
+            if isinstance(langchain_msg, ToolMessage):
+                tool_call_id = str(langchain_msg.tool_call_id or "")
+                if not pending_tool_calls:
+                    # Tool messages without an immediately preceding AI tool_calls
+                    # chain are invalid for model history; skip corrupted records.
+                    continue
+                if tool_call_id not in pending_tool_calls:
+                    # Skip corrupted legacy tool message not tied to pending calls.
+                    continue
+                pending_tool_calls.remove(tool_call_id)
+                result.append(langchain_msg)
+                continue
+
+            if pending_tool_calls:
+                # Incomplete tool response chain from legacy history, drop pending.
+                pending_tool_calls = set()
+            result.append(langchain_msg)
 
         return result
 
@@ -113,3 +140,4 @@ class MessageMapper:
             content=content,
             tool_call_id=msg.tool_call_id,
         )
+

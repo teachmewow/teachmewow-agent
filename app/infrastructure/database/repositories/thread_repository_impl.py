@@ -27,6 +27,7 @@ class ThreadRepositoryImpl:
             wow_class=WowClass(model.wow_class),
             wow_spec=WowSpec(model.wow_spec),
             wow_role=model.wow_role,
+            active_build_id=model.active_build_id,
             title=model.title,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -40,6 +41,7 @@ class ThreadRepositoryImpl:
             wow_class=entity.wow_class.value,
             wow_spec=entity.wow_spec.value,
             wow_role=entity.wow_role,
+            active_build_id=entity.active_build_id,
             title=entity.title,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
@@ -90,6 +92,7 @@ class ThreadRepositoryImpl:
         model.wow_class = thread.wow_class.value
         model.wow_spec = thread.wow_spec.value
         model.wow_role = thread.wow_role
+        model.active_build_id = thread.active_build_id
         model.updated_at = datetime.now(timezone.utc)
 
         await self.session.flush()
@@ -119,6 +122,7 @@ class ThreadRepositoryImpl:
                 wow_class=thread.wow_class.value,
                 wow_spec=thread.wow_spec.value,
                 wow_role=thread.wow_role,
+                active_build_id=thread.active_build_id,
                 title=thread.title,
                 created_at=thread.created_at,
                 updated_at=thread.updated_at,
@@ -140,3 +144,15 @@ class ThreadRepositoryImpl:
             return existing, False
 
         raise RuntimeError(f"Failed to get or create thread {thread.id}")
+
+    async def set_active_build_id(self, thread_id: str, active_build_id: str | None) -> None:
+        """Persist current active build for a thread."""
+        result = await self.session.execute(
+            select(ThreadModel).where(ThreadModel.id == thread_id)
+        )
+        model = result.scalar_one_or_none()
+        if not model:
+            return
+        model.active_build_id = active_build_id
+        model.updated_at = datetime.now(timezone.utc)
+        await self.session.flush()

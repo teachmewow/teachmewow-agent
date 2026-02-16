@@ -11,6 +11,32 @@ from app.presentation.serializers import serialize_message, serialize_thread
 router = APIRouter(prefix="/threads", tags=["threads"])
 
 
+@router.get("/user/{user_id}", response_model=list[ThreadResponse])
+async def get_user_threads(
+    user_id: str,
+    thread_service: ThreadServiceDep,
+    limit: int | None = 10,
+    offset: int = 0,
+) -> list[ThreadResponse]:
+    """
+    Get recent threads for a user.
+
+    Args:
+        user_id: User identifier
+        limit: Maximum number of threads to return
+        offset: Number of threads to skip
+
+    Returns:
+        List of threads ordered by updated_at desc
+    """
+    threads = await thread_service.get_user_threads(
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+    )
+    return [serialize_thread(thread) for thread in threads]
+
+
 @router.get("/{thread_id}/messages", response_model=list[MessageResponse])
 async def get_thread_messages(
     thread_id: str,

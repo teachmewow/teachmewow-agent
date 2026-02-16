@@ -3,27 +3,28 @@ Database observer for persisting messages during streaming.
 """
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import BaseMessage
 
-from app.application.agent.state_schema import StreamEvent
 from app.domain import Message, MessageRole, ToolCall
+from app.domain.repositories import ThreadRepository
 from app.domain.repositories import MessageRepository
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseObserver:
     """
-    Observer that persists AI messages to the database.
-
-    This observer listens to stream events and saves the AI response
-    to the database when the stream completes.
+    Observer that persists AI/tool messages from normalized stream events.
     """
 
     def __init__(
         self,
         message_repository: MessageRepository,
+        thread_repository: ThreadRepository,
         thread_id: str,
     ):
         """
@@ -34,37 +35,42 @@ class DatabaseObserver:
             thread_id: ID of the conversation thread
         """
         self.message_repository = message_repository
+        self.thread_repository = thread_repository
         self.thread_id = thread_id
+        self._saved_tool_call_ids: set[str] = set()
+        self._saved_ai_runs: set[str] = set()
 
-    async def on_event(self, event: StreamEvent) -> None:
+    async def on_event(self, event) -> None:
         """
         Called when a stream event is processed.
 
-        Persists tool results as they happen to ensure tool messages
-        are available in history for subsequent LLM calls.
+        Persists normalized internal events emitted by PersistenceFacade.
 
         Args:
             event: The stream event that was processed
         """
-        if event.event != "on_tool_end":
+        if event.event == "persist_ai_message":
+            await self._handle_ai_persistence_event(event.data)
             return
-
-        tool_call_id = event.run_id or ""
-        if not tool_call_id:
+        if event.event == "persist_tool_message":
+            await self._handle_tool_persistence_event(event.data)
             return
+        return
 
-        output = event.data.get("output")
-        content = json.dumps(output) if isinstance(output, (dict, list)) else str(output)
-
-        tool_message = Message(
-            id=f"tool_{tool_call_id}",
-            thread_id=self.thread_id,
-            role=MessageRole.TOOL,
-            content=content,
-            tool_call_id=tool_call_id,
-            tool_result=content,
-        )
-        await self.message_repository.save(tool_message)
+    async def _persist_active_build_id(self, content: str) -> None:
+        try:
+            parsed = json.loads(content)
+        except Exception:
+            return
+        if not isinstance(parsed, dict):
+            return
+        tool_name = parsed.get("tool")
+        if tool_name != "build_lookup":
+            return
+        build_id = parsed.get("build_id")
+        if not isinstance(build_id, str) or not build_id.strip():
+            return
+        await self.thread_repository.set_active_build_id(self.thread_id, build_id)
 
     async def on_node_complete(self, node: str, messages: list[BaseMessage]) -> None:
         """
@@ -76,22 +82,16 @@ class DatabaseObserver:
             node: The node name that completed
             messages: New messages produced by the node
         """
-        for message in messages:
-            domain_message = self._convert_message(message)
-            if domain_message is not None:
-                await self.message_repository.save(domain_message)
+        return
 
     async def on_stream_complete(self, full_response: str) -> None:
         """
         Called when the stream is complete.
 
-        Saves the AI response to the database.
-
         Args:
             full_response: The complete accumulated response text
         """
-        # Persistence now happens on node completion.
-        # We keep this method as a no-op for future extensions.
+        # Persistence happens during event processing.
         return
 
     async def on_error(self, error: Exception) -> None:
@@ -106,54 +106,62 @@ class DatabaseObserver:
         # Could log the error or save partial response
         pass
 
-    def _convert_message(self, message: BaseMessage) -> Message | None:
-        """
-        Convert a LangChain BaseMessage to a domain Message.
-
-        Args:
-            message: LangChain message instance
-
-        Returns:
-            Domain Message or None if not supported
-        """
-        if isinstance(message, AIMessage):
-            return self._convert_ai_message(message)
-
-        if isinstance(message, ToolMessage):
-            return self._convert_tool_message(message)
-
-        return None
-
-    def _convert_ai_message(self, message: AIMessage) -> Message:
-        """Convert AIMessage to domain Message (including tool calls)."""
-        tool_calls = None
-        if message.tool_calls:
-            tool_calls = [
-                ToolCall(
-                    id=tool_call.get("id", ""),
-                    name=tool_call.get("name", ""),
-                    arguments=json.dumps(tool_call.get("args", {})),
-                )
-                for tool_call in message.tool_calls
-            ]
-
-        return Message(
+    async def _handle_ai_persistence_event(self, data: dict) -> None:
+        run_id = str(data["run_id"])
+        if run_id in self._saved_ai_runs:
+            return
+        self._saved_ai_runs.add(run_id)
+        is_partial = bool(data["is_partial"])
+        raw_tool_calls = data.get("tool_calls", [])
+        tool_calls = self._parse_tool_calls(raw_tool_calls)
+        message = Message(
             id=str(uuid.uuid4()),
             thread_id=self.thread_id,
             role=MessageRole.AI,
-            content=message.content or "",
+            content=str(data["content"]),
             timestamp=datetime.now(timezone.utc),
             tool_calls=tool_calls,
+            reasoning="partial_stream" if is_partial else None,
         )
+        await self.message_repository.save(message)
 
-    def _convert_tool_message(self, message: ToolMessage) -> Message:
-        """Convert ToolMessage to domain Message."""
-        return Message(
-            id=str(uuid.uuid4()),
+    async def _handle_tool_persistence_event(self, data: dict) -> None:
+        tool_call_id = str(data["tool_call_id"])
+        if tool_call_id in self._saved_tool_call_ids:
+            return
+        self._saved_tool_call_ids.add(tool_call_id)
+        output = str(data["output"])
+        message = Message(
+            id=f"tool-{tool_call_id}",
             thread_id=self.thread_id,
             role=MessageRole.TOOL,
-            content=message.content or "",
+            content=output,
             timestamp=datetime.now(timezone.utc),
-            tool_call_id=message.tool_call_id,
-            tool_result=message.content or "",
+            tool_call_id=tool_call_id,
+            tool_result=output,
         )
+        try:
+            await self.message_repository.save(message)
+            await self._persist_active_build_id(content=output)
+        except Exception:
+            self._saved_tool_call_ids.discard(tool_call_id)
+            raise
+
+    def _parse_tool_calls(self, raw_tool_calls: object) -> list[ToolCall] | None:
+        if not raw_tool_calls:
+            return None
+        if not isinstance(raw_tool_calls, list):
+            raise RuntimeError("DatabaseObserver: tool_calls must be a list")
+
+        tool_calls: list[ToolCall] = []
+        for item in raw_tool_calls:
+            if not isinstance(item, dict):
+                raise RuntimeError("DatabaseObserver: tool_call item must be dict")
+            tool_calls.append(
+                ToolCall(
+                    id=str(item["id"]),
+                    name=str(item["name"]),
+                    arguments=json.dumps(item.get("args", {})),
+                )
+            )
+        return tool_calls

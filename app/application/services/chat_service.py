@@ -11,12 +11,8 @@ from langgraph.graph.state import CompiledStateGraph
 from app.domain import Message, MessageRole, Thread, WowClass, WowSpec
 from app.domain.repositories import MessageRepository, ThreadRepository
 
-from ..agent import (
-    AgentState,
-    DatabaseObserver,
-    MessageMapper,
-    SSEOrchestrator,
-)
+from ..agent import AgentState, DatabaseObserver, MessageMapper, SSEOrchestrator
+from ..agent.state_schema import CharInfo
 
 
 class ChatService:
@@ -54,9 +50,7 @@ class ChatService:
         thread_id: str,
         user_id: str,
         input_text: str,
-        wow_class: str,
-        wow_spec: str,
-        wow_role: str,
+        char_info: CharInfo,
     ) -> AsyncGenerator[str, None]:
         """
         Process a user message and stream the response.
@@ -68,22 +62,27 @@ class ChatService:
             thread_id: ID of the conversation thread (format: uuid_userId)
             user_id: ID of the user
             input_text: User's message text
-            wow_class: WoW class context (required)
-            wow_spec: WoW spec context (required)
-            wow_role: WoW role context (required)
+            char_info: WoW class/spec/role context (required)
 
         Yields:
             SSE-formatted event strings
         """
         # Ensure thread exists
+        normalized_char_info = CharInfo(
+            **{
+                "class": char_info.wow_class,
+                "spec": char_info.spec,
+                "role": char_info.role,
+            }
+        )
         thread = Thread(
             id=thread_id,
             user_id=user_id,
-            wow_class=WowClass(wow_class),
-            wow_spec=WowSpec(wow_spec),
-            wow_role=wow_role,
+            wow_class=WowClass(normalized_char_info.wow_class),
+            wow_spec=WowSpec(normalized_char_info.spec),
+            wow_role=normalized_char_info.role,
         )
-        await self.thread_repository.get_or_create(thread)
+        persisted_thread, _ = await self.thread_repository.get_or_create(thread)
 
         # Save user message first and capture timestamp
         user_timestamp = datetime.now(timezone.utc)
@@ -109,14 +108,14 @@ class ChatService:
             messages=messages,
             thread_id=thread_id,
             user_id=user_id,
-            wow_class=wow_class,
-            wow_spec=wow_spec,
-            wow_role=wow_role,
+            char_info=normalized_char_info,
+            active_build_id=persisted_thread.active_build_id,
         )
 
         # Set up database observer for automatic AI message persistence
         db_observer = DatabaseObserver(
             message_repository=self.message_repository,
+            thread_repository=self.thread_repository,
             thread_id=thread_id,
         )
         self._orchestrator.add_observer(db_observer)

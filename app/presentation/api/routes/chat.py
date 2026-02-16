@@ -34,9 +34,7 @@ async def send_message(
             thread_id=request.thread_id,
             user_id=request.user_id,
             input_text=request.input,
-            wow_class=request.wow_class,
-            wow_spec=request.spec,
-            wow_role=request.role,
+            char_info=request.char_info,
         ),
         media_type="text/event-stream",
         headers={
