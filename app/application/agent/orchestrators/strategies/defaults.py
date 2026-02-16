@@ -32,8 +32,7 @@ class ChatModelStreamStrategy:
         stream_state,
         actions: StreamOrchestratorActions,
     ) -> list[str]:
-        sse = await actions.handle_llm_chunk(event, event_data, stream_state)
-        return [sse] if sse else []
+        return await actions.process_llm_stream_chunk(event, event_data, stream_state)
 
 
 class ChatModelEndStrategy:
@@ -75,7 +74,7 @@ class ToolStartStrategy:
         stream_state,
         actions: StreamOrchestratorActions,
     ) -> list[str]:
-        return await actions.emit_tool_call_event(event, stream_state)
+        return await actions.emit_tool_start_event(event, stream_state)
 
 
 class ToolEndStrategy:
@@ -89,7 +88,7 @@ class ToolEndStrategy:
         stream_state,
         actions: StreamOrchestratorActions,
     ) -> list[str]:
-        return await actions.emit_tool_result_event(event, event_data, stream_state)
+        return await actions.emit_tool_end_event(event, event_data, stream_state)
 
 
 class ChainStartStrategy:
@@ -119,7 +118,7 @@ class ChainEndStrategy:
     ) -> list[str]:
         if not event_name:
             return []
-        await actions.handle_chain_end(event_data, event_name, stream_state)
+        await actions.process_chain_end(event_data, event_name, stream_state)
         return []
 
 
@@ -136,7 +135,7 @@ class DefaultPassThroughStrategy:
     ) -> list[str]:
         if not event_kind:
             return []
-        return await actions.emit_langchain_event(event, stream_state)
+        return await actions.emit_generic_event(event, stream_state)
 
 
 def create_default_strategy_registry() -> dict[str, StreamEventStrategy]:
