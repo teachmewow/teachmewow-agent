@@ -6,11 +6,10 @@ from .agent import (
     AgentState,
     GraphBuilder,
     StreamEvent,
-    StreamHandler,
+    build_langchain_stream_event,
     create_graph_builder,
-    create_stream_handler,
+    format_sse_event,
     get_all_tools,
-    stream_graph_events,
 )
 from .services import (
     ChatService,
@@ -24,11 +23,10 @@ __all__ = [
     "AgentState",
     "GraphBuilder",
     "StreamEvent",
-    "StreamHandler",
+    "build_langchain_stream_event",
     "create_graph_builder",
-    "create_stream_handler",
+    "format_sse_event",
     "get_all_tools",
-    "stream_graph_events",
     # Services
     "ChatService",
     "ThreadService",
