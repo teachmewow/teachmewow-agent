@@ -160,7 +160,9 @@ class SSEOrchestrator:
             await self._notify_complete(stream_state.full_response)
 
             # Emit done event
-            done_event = StreamEvent(event="done", data={})
+            done_event = StreamEvent(
+                event="done", data={"payload": {"finish_reason": "done"}}
+            )
             await self._notify_observers(done_event)
             yield format_sse_event(done_event)
 
@@ -175,7 +177,7 @@ class SSEOrchestrator:
             await self._notify_error(e)
 
             # Emit error event
-            error_event = StreamEvent(event="error", data={"error": str(e)})
+            error_event = StreamEvent(event="error", data={"payload": {"error": str(e)}})
             yield format_sse_event(error_event)
 
     def _now(self) -> float:

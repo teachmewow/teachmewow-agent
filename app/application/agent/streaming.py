@@ -30,17 +30,16 @@ def format_sse_event(event: StreamEvent) -> str:
 def build_langchain_stream_event(
     event: dict, data_override: dict | None = None
 ) -> StreamEvent:
-    """Build a StreamEvent envelope from a LangChain astream_events payload."""
+    """Build a compact StreamEvent envelope for frontend rendering."""
+    event_kind = str(event.get("event", ""))
     payload = data_override if data_override is not None else event.get("data", {})
+    compact_payload = _extract_relevant_payload(event_kind, payload)
     return StreamEvent(
-        event=event.get("event", ""),
+        event=event_kind,
         data={
             "name": event.get("name"),
             "run_id": event.get("run_id"),
-            "parent_ids": event.get("parent_ids") or [],
-            "metadata": event.get("metadata") or {},
-            "tags": event.get("tags") or [],
-            "payload": _sanitize_for_json(payload),
+            "payload": _sanitize_for_json(compact_payload),
         },
     )
 
@@ -66,3 +65,26 @@ def _sanitize_for_json(value: object) -> object:
         except Exception:
             return str(value)
     return str(value)
+
+
+def _extract_relevant_payload(event_kind: str, payload: object) -> object:
+    if not isinstance(payload, Mapping):
+        return payload
+
+    if event_kind == "on_chat_model_stream":
+        chunk = payload.get("chunk")
+        content = getattr(chunk, "content", None) if chunk is not None else None
+        if isinstance(chunk, Mapping):
+            content = chunk.get("content")
+        return {"chunk": {"content": content or ""}}
+
+    if event_kind == "on_tool_start":
+        return {"input": payload.get("input", {})}
+
+    if event_kind == "on_tool_end":
+        return {"output": payload.get("output", "")}
+
+    if event_kind in {"done", "error"}:
+        return payload
+
+    return {}

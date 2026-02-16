@@ -18,7 +18,7 @@ class ChatModelStartStrategy:
         stream_state,
         actions: StreamOrchestratorActions,
     ) -> list[str]:
-        return await actions.emit_langchain_event(event, stream_state)
+        return []
 
 
 class ChatModelStreamStrategy:
@@ -47,7 +47,7 @@ class ChatModelEndStrategy:
         stream_state,
         actions: StreamOrchestratorActions,
     ) -> list[str]:
-        return await actions.emit_langchain_event(event, stream_state)
+        return []
 
 
 class IgnoreEventStrategy:
@@ -103,9 +103,7 @@ class ChainStartStrategy:
         stream_state,
         actions: StreamOrchestratorActions,
     ) -> list[str]:
-        if not event_name:
-            return []
-        return await actions.emit_langchain_event(event, stream_state)
+        return []
 
 
 class ChainEndStrategy:
@@ -122,7 +120,7 @@ class ChainEndStrategy:
         if not event_name:
             return []
         await actions.handle_chain_end(event_data, event_name, stream_state)
-        return await actions.emit_langchain_event(event, stream_state)
+        return []
 
 
 class DefaultPassThroughStrategy:
