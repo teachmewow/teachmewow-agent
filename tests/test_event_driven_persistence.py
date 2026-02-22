@@ -33,9 +33,13 @@ class _InMemoryMessageRepository:
 class _InMemoryThreadRepository:
     def __init__(self) -> None:
         self.active_build_id = None
+        self.active_build_info = None
 
     async def set_active_build_id(self, thread_id: str, build_id: str) -> None:
         self.active_build_id = build_id
+
+    async def set_active_build_info(self, thread_id: str, active_build_info: dict | None) -> None:
+        self.active_build_info = active_build_info
 
 
 class _Chunk:
@@ -119,6 +123,7 @@ async def test_database_observer_persists_internal_events() -> None:
                 "content": "hello",
                 "is_partial": False,
                 "tool_calls": [{"id": "call_abc", "name": "build_lookup", "args": {}}],
+                "response_metadata": {"citations": [{"citation_id": "source_1"}]},
             },
         )
     )
@@ -139,5 +144,10 @@ async def test_database_observer_persists_internal_events() -> None:
     assert message_repo.saved[1].role == MessageRole.TOOL
     assert message_repo.saved[0].tool_calls is not None
     assert message_repo.saved[0].tool_calls[0].id == "call_abc"
+    assert message_repo.saved[0].response_metadata == {
+        "citations": [{"citation_id": "source_1"}]
+    }
     assert message_repo.saved[1].tool_call_id == "call_abc"
     assert thread_repo.active_build_id == "b-123"
+    assert thread_repo.active_build_info is not None
+    assert thread_repo.active_build_info.get("build_id") == "b-123"

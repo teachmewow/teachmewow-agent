@@ -121,12 +121,16 @@ def test_persistence_facade_builds_ai_and_tool_events() -> None:
             "output": {
                 "content": "hello",
                 "tool_calls": [{"id": "call_x", "name": "x", "args": {}}],
+                "response_metadata": {"citations": [{"citation_id": "source_1"}]},
             }
         },
     )
     assert ai_event.event == "persist_ai_message"
     assert ai_event.data["content"] == "hello"
     assert ai_event.data["tool_calls"][0]["id"] == "call_x"
+    assert ai_event.data["response_metadata"] == {
+        "citations": [{"citation_id": "source_1"}]
+    }
 
     facade.on_tool_start(
         {"event": "on_tool_start", "run_id": "run-tool", "name": "x"},

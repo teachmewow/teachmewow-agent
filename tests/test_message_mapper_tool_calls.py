@@ -17,6 +17,7 @@ def test_message_mapper_reconstructs_ai_and_tool_chain() -> None:
             role=MessageRole.AI,
             content="",
             tool_calls=[ToolCall(id="call_1", name="list_builds", arguments="{}")],
+            response_metadata={"citations": [{"citation_id": "source_1"}]},
         ),
         Message(
             id="tool-1",
@@ -32,6 +33,7 @@ def test_message_mapper_reconstructs_ai_and_tool_chain() -> None:
     assert len(mapped) == 2
     assert isinstance(mapped[0], AIMessage)
     assert mapped[0].tool_calls[0]["id"] == "call_1"
+    assert mapped[0].response_metadata == {"citations": [{"citation_id": "source_1"}]}
     assert isinstance(mapped[1], ToolMessage)
     assert mapped[1].tool_call_id == "call_1"
 
