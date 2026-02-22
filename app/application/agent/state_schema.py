@@ -62,6 +62,7 @@ class AgentState(BaseModel):
     route: str = "default"
     mission_gate: dict = Field(default_factory=dict)
     clarification_attempted: bool = False
+    coach_plan: dict = Field(default_factory=dict)
 
     class Config:
         arbitrary_types_allowed = True

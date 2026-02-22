@@ -4,6 +4,7 @@ import types
 sys.modules.setdefault("helix", types.ModuleType("helix"))
 
 from app.application.agent.state_schema import StreamEvent
+from app.application.agent.streaming import build_langchain_stream_event
 from app.application.agent.orchestrators.runtime import (
     ChunkAccumulator,
     ChunkFlusher,
@@ -41,6 +42,20 @@ def test_chunk_flusher_builds_stream_event_from_context() -> None:
     assert event is not None
     assert event.event == "on_chat_model_stream"
     assert event.data.get("payload", {}).get("chunk", {}).get("content") == "hello"
+
+
+def test_build_langchain_stream_event_maps_plan_custom_events() -> None:
+    stream_event = build_langchain_stream_event(
+        {
+            "event": "on_custom_event",
+            "name": "plan_update",
+            "run_id": "run-plan",
+            "data": {"steps": [{"id": "core_skills"}]},
+        }
+    )
+    assert stream_event.event == "plan_update"
+    assert stream_event.data["run_id"] == "run-plan"
+    assert stream_event.data["payload"]["steps"][0]["id"] == "core_skills"
 
 
 async def test_emit_pipeline_runs_stages_in_order() -> None:

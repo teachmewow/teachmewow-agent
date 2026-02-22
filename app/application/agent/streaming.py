@@ -32,10 +32,13 @@ def build_langchain_stream_event(
 ) -> StreamEvent:
     """Build a compact StreamEvent envelope for frontend rendering."""
     event_kind = str(event.get("event", ""))
+    stream_event_name = _normalize_stream_event_name(
+        event_kind=event_kind, event_name=str(event.get("name") or "")
+    )
     payload = data_override if data_override is not None else event.get("data", {})
     compact_payload = _extract_relevant_payload(event_kind, payload)
     return StreamEvent(
-        event=event_kind,
+        event=stream_event_name,
         data={
             "name": event.get("name"),
             "run_id": event.get("run_id"),
@@ -87,4 +90,15 @@ def _extract_relevant_payload(event_kind: str, payload: object) -> object:
     if event_kind in {"done", "error"}:
         return payload
 
+    if event_kind == "on_custom_event":
+        return payload
+
     return {}
+
+
+def _normalize_stream_event_name(*, event_kind: str, event_name: str) -> str:
+    if event_kind != "on_custom_event":
+        return event_kind
+    if event_name in {"plan_init", "plan_update"}:
+        return event_name
+    return event_kind

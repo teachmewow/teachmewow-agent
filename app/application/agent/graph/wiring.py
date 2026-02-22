@@ -19,9 +19,11 @@ def wire_graph(graph: StateGraph, nodes: GraphNodes) -> None:
 
 def _add_nodes(graph: StateGraph, nodes: GraphNodes) -> None:
     graph.add_node(GraphNodeName.ROUTER.value, nodes.router)
+    graph.add_node(GraphNodeName.COACH_PLAN.value, nodes.coach_plan)
     graph.add_node(GraphNodeName.AGENT.value, nodes.agent)
     graph.add_node(GraphNodeName.COACH_AGENT.value, nodes.coach_agent)
     graph.add_node(GraphNodeName.TOOLS.value, nodes.tools)
+    graph.add_node(GraphNodeName.CHECKLIST_UPDATER.value, nodes.checklist_updater)
     graph.add_node(GraphNodeName.MISSION_GATE.value, nodes.mission_gate)
 
 
@@ -32,10 +34,11 @@ def _add_edges(graph: StateGraph) -> None:
         GraphNodeName.ROUTER.value,
         route_from_router,
         {
-            GraphRouteName.COACH.value: GraphNodeName.COACH_AGENT.value,
+            GraphRouteName.COACH.value: GraphNodeName.COACH_PLAN.value,
             GraphRouteName.DEFAULT.value: GraphNodeName.AGENT.value,
         },
     )
+    graph.add_edge(GraphNodeName.COACH_PLAN.value, GraphNodeName.COACH_AGENT.value)
 
     graph.add_conditional_edges(
         GraphNodeName.AGENT.value,
@@ -57,9 +60,12 @@ def _add_edges(graph: StateGraph) -> None:
         GraphNodeName.TOOLS.value,
         route_after_tools,
         {
-            GraphRouteName.COACH.value: GraphNodeName.COACH_AGENT.value,
+            GraphRouteName.COACH.value: GraphNodeName.CHECKLIST_UPDATER.value,
             GraphRouteName.DEFAULT.value: GraphNodeName.AGENT.value,
         },
+    )
+    graph.add_edge(
+        GraphNodeName.CHECKLIST_UPDATER.value, GraphNodeName.COACH_AGENT.value
     )
     graph.add_conditional_edges(
         GraphNodeName.MISSION_GATE.value,

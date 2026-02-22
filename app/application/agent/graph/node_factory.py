@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from langchain_core.tools import BaseTool
 
+from app.application.agent.nodes.checklist_updater_node import ChecklistUpdaterNode
+from app.application.agent.nodes.coach_plan_node import CoachPlanNode
 from app.application.agent.nodes.llm_node import LLMNode
 from app.application.agent.nodes.mission_gate_node import MissionGateNode
 from app.application.agent.nodes.routing_node import RoutingNode
@@ -16,9 +18,11 @@ from .model_factory import GraphModels
 @dataclass(frozen=True)
 class GraphNodes:
     router: RoutingNode
+    coach_plan: CoachPlanNode
     agent: LLMNode
     coach_agent: LLMNode
     tools: ToolNode
+    checklist_updater: ChecklistUpdaterNode
     mission_gate: MissionGateNode
 
 
@@ -34,11 +38,13 @@ class GraphNodeFactory:
     def build(self) -> GraphNodes:
         return GraphNodes(
             router=RoutingNode(self._models.classifier_model),
+            coach_plan=CoachPlanNode(),
             agent=LLMNode(self._models.agent_model),
             coach_agent=LLMNode(
                 self._models.coach_model,
                 system_prompt=COACH_SYSTEM_PROMPT,
             ),
             tools=ToolNode(self._tools),
+            checklist_updater=ChecklistUpdaterNode(self._models.classifier_model),
             mission_gate=MissionGateNode(self._models.classifier_model),
         )
