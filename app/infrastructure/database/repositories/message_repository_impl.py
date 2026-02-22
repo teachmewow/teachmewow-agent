@@ -42,6 +42,7 @@ class MessageRepositoryImpl:
             tool_call_id=model.tool_call_id,
             tool_result=model.tool_result,
             reasoning=model.reasoning,
+            response_metadata=model.response_metadata,
             token_count=model.token_count,
         )
 
@@ -70,6 +71,7 @@ class MessageRepositoryImpl:
             tool_call_id=entity.tool_call_id,
             tool_result=entity.tool_result,
             reasoning=entity.reasoning,
+            response_metadata=entity.response_metadata,
             token_count=entity.token_count,
         )
 
@@ -92,6 +94,7 @@ class MessageRepositoryImpl:
             "tool_call_id": model.tool_call_id,
             "tool_result": model.tool_result,
             "reasoning": model.reasoning,
+            "response_metadata": model.response_metadata,
             "token_count": model.token_count,
         }
         stmt = (

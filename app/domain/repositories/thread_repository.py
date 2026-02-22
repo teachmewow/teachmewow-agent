@@ -92,3 +92,7 @@ class ThreadRepository(Protocol):
     async def set_active_build_id(self, thread_id: str, active_build_id: str | None) -> None:
         """Persist the active build id for a thread."""
         ...
+
+    async def set_active_build_info(self, thread_id: str, active_build_info: dict | None) -> None:
+        """Persist the active build context for a thread."""
+        ...

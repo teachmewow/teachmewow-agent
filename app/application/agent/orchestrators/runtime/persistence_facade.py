@@ -27,6 +27,7 @@ class PersistenceFacade:
         output = event_data["output"]
         final_content = self._read_content(output)
         tool_calls = self._read_tool_calls(output)
+        response_metadata = self._read_response_metadata(output)
         self._pending_tool_calls = list(tool_calls)
         assembled = self._ai.complete(run_id=run_id, final_content=final_content)
         return StreamEvent(
@@ -36,6 +37,7 @@ class PersistenceFacade:
                 "content": assembled.content,
                 "is_partial": assembled.is_partial,
                 "tool_calls": tool_calls,
+                "response_metadata": response_metadata,
             },
         )
 
@@ -106,6 +108,16 @@ class PersistenceFacade:
             tool_args = item.get("args", {})
             normalized.append({"id": tool_call_id, "name": tool_name, "args": tool_args})
         return normalized
+
+    def _read_response_metadata(self, payload: object) -> dict | None:
+        metadata: object = None
+        if hasattr(payload, "response_metadata"):
+            metadata = payload.response_metadata
+        elif isinstance(payload, dict):
+            metadata = payload.get("response_metadata")
+        if not isinstance(metadata, dict):
+            return None
+        return metadata
 
     def _resolve_tool_call_id(self, *, event_data: dict, tool_name: str) -> str:
         if "tool_call_id" in event_data:

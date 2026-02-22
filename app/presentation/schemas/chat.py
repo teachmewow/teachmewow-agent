@@ -39,4 +39,5 @@ class MessageResponse(BaseModel):
     tool_call_id: str | None = None
     tool_result: str | None = None
     reasoning: str | None = None
+    response_metadata: dict | None = None
     token_count: int | None = None

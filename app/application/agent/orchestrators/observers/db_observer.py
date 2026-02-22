@@ -57,7 +57,7 @@ class DatabaseObserver:
             return
         return
 
-    async def _persist_active_build_id(self, content: str) -> None:
+    async def _persist_active_build_context(self, content: str) -> None:
         try:
             parsed = json.loads(content)
         except Exception:
@@ -70,7 +70,22 @@ class DatabaseObserver:
         build_id = parsed.get("build_id")
         if not isinstance(build_id, str) or not build_id.strip():
             return
+        build_info = parsed.get("build_info")
+        if not isinstance(build_info, dict):
+            build_info = {
+                "build_id": build_id,
+                "import_code": parsed.get("import_code"),
+                "wow_class": "",
+                "spec": "",
+                "decoded_nodes": parsed.get("decoded_nodes") or [],
+                "hero_talent": parsed.get("hero_talent"),
+                "environment": parsed.get("environment"),
+                "scenario": parsed.get("scenario"),
+                "source": parsed.get("source"),
+                "patch": parsed.get("patch"),
+            }
         await self.thread_repository.set_active_build_id(self.thread_id, build_id)
+        await self.thread_repository.set_active_build_info(self.thread_id, build_info)
 
     async def on_node_complete(self, node: str, messages: list[BaseMessage]) -> None:
         """
@@ -122,6 +137,11 @@ class DatabaseObserver:
             timestamp=datetime.now(timezone.utc),
             tool_calls=tool_calls,
             reasoning="partial_stream" if is_partial else None,
+            response_metadata=(
+                data.get("response_metadata")
+                if isinstance(data.get("response_metadata"), dict)
+                else None
+            ),
         )
         await self.message_repository.save(message)
 
@@ -142,7 +162,7 @@ class DatabaseObserver:
         )
         try:
             await self.message_repository.save(message)
-            await self._persist_active_build_id(content=output)
+            await self._persist_active_build_context(content=output)
         except Exception:
             self._saved_tool_call_ids.discard(tool_call_id)
             raise

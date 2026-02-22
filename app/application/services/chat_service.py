@@ -12,7 +12,7 @@ from app.domain import Message, MessageRole, Thread, WowClass, WowSpec
 from app.domain.repositories import MessageRepository, ThreadRepository
 
 from ..agent import AgentState, DatabaseObserver, MessageMapper, SSEOrchestrator
-from ..agent.state_schema import CharInfo
+from ..agent.state_schema import BuildInfo, CharInfo
 
 
 class ChatService:
@@ -103,13 +103,30 @@ class ChatService:
         # Convert domain messages to LangChain messages using the mapper
         messages = MessageMapper.to_langchain_messages(history)
 
+        persisted_build_info = None
+        if isinstance(persisted_thread.active_build_info, dict):
+            try:
+                persisted_build_info = BuildInfo.model_validate(
+                    persisted_thread.active_build_info
+                )
+            except Exception:
+                persisted_build_info = None
+
         # Create initial state
         state = AgentState(
             messages=messages,
             thread_id=thread_id,
             user_id=user_id,
             char_info=normalized_char_info,
-            active_build_id=persisted_thread.active_build_id,
+            active_build_id=(
+                persisted_thread.active_build_id
+                or (
+                    str(persisted_thread.active_build_info.get("build_id") or "")
+                    if isinstance(persisted_thread.active_build_info, dict)
+                    else None
+                )
+            ),
+            build_info=persisted_build_info,
         )
 
         # Set up database observer for automatic AI message persistence

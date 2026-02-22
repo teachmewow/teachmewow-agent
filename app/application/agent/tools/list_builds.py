@@ -7,28 +7,45 @@ Lists available build IDs for character context and optional filters.
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 from langchain_core.tools import tool
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.infrastructure.database.connection import get_session
 from app.infrastructure.database.models import BuildModel
 
 
-@tool
+class ListBuildsInput(BaseModel):
+    environment: Literal["raid", "mythic_plus", "delves"] | None = Field(default=None)
+    mode: Literal["single", "aoe"] | None = Field(default=None)
+    hero_talent: Literal["slayer", "colossus"] | None = Field(default=None)
+    limit: int = Field(default=10)
+
+
+@tool(args_schema=ListBuildsInput)
 async def list_builds(
-    char_info: dict[str, str],
-    environment: str | None = None,
-    mode: str | None = None,
-    hero_talent: str | None = None,
+    environment: Literal["raid", "mythic_plus", "delves"] | None = None,
+    mode: Literal["single", "aoe"] | None = None,
+    hero_talent: Literal["slayer", "colossus"] | None = None,
     limit: int = 10,
+    char_info: dict[str, str] | None = None,
 ) -> str:
     """
     List available builds for a class/spec/role with optional filters.
     """
-    normalized_class = str(char_info.get("class", "")).strip().lower()
-    normalized_spec = str(char_info.get("spec", "")).strip().lower()
-    normalized_role = str(char_info.get("role", "")).strip().lower()
+    normalized_class = ""
+    normalized_spec = ""
+    normalized_role = ""
+    if isinstance(char_info, dict):
+        normalized_class = str(char_info.get("class", "")).strip().lower()
+        normalized_spec = str(char_info.get("spec", "")).strip().lower()
+        normalized_role = str(char_info.get("role", "")).strip().lower()
+    elif char_info is not None:
+        normalized_class = str(getattr(char_info, "wow_class", "")).strip().lower()
+        normalized_spec = str(getattr(char_info, "spec", "")).strip().lower()
+        normalized_role = str(getattr(char_info, "role", "")).strip().lower()
 
     if not normalized_class or not normalized_spec or not normalized_role:
         return "No results found."
@@ -43,11 +60,11 @@ async def list_builds(
     )
 
     if environment:
-        query = query.where(BuildModel.environment == str(environment).strip().lower())
+        query = query.where(BuildModel.environment == environment)
     if mode:
-        query = query.where(BuildModel.build_mode == str(mode).strip().lower())
+        query = query.where(BuildModel.build_mode == mode)
     if hero_talent:
-        query = query.where(BuildModel.hero_talent == str(hero_talent).strip().lower())
+        query = query.where(BuildModel.hero_talent == hero_talent)
 
     async with get_session() as session:
         result = await session.execute(query)

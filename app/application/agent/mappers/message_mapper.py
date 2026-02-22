@@ -119,9 +119,15 @@ class MessageMapper:
                 }
                 for tc in msg.tool_calls
             ]
-            return AIMessage(content=msg.content, tool_calls=tool_calls)
+            kwargs = {"content": msg.content, "tool_calls": tool_calls}
+            if isinstance(msg.response_metadata, dict):
+                kwargs["response_metadata"] = msg.response_metadata
+            return AIMessage(**kwargs)
 
-        return AIMessage(content=msg.content)
+        kwargs = {"content": msg.content}
+        if isinstance(msg.response_metadata, dict):
+            kwargs["response_metadata"] = msg.response_metadata
+        return AIMessage(**kwargs)
 
     @staticmethod
     def _convert_tool_message(msg: Message) -> ToolMessage | None:
@@ -140,4 +146,3 @@ class MessageMapper:
             content=content,
             tool_call_id=msg.tool_call_id,
         )
-

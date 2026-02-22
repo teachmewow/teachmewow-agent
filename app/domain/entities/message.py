@@ -37,6 +37,7 @@ class Message:
         tool_call_id: ID of the tool call this message responds to (for tool messages)
         tool_result: Result of a tool execution (for tool messages)
         reasoning: AI reasoning/thinking (if exposed)
+        response_metadata: Structured metadata for AI responses (e.g. citations)
         token_count: Number of tokens in the message
     """
 
@@ -49,6 +50,7 @@ class Message:
     tool_call_id: str | None = None
     tool_result: str | None = None
     reasoning: str | None = None
+    response_metadata: dict | None = None
     token_count: int | None = None
 
     def is_human(self) -> bool:

@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from langchain_core.tools import tool
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.infrastructure.database.connection import get_session
@@ -17,32 +18,77 @@ from app.infrastructure.database.models import BuildModel
 from app.infrastructure.helix.client import get_helix_client
 
 
-@tool
+class BuildLookupInput(BaseModel):
+    build_id: str = Field(..., min_length=1)
+
+
+@tool(args_schema=BuildLookupInput)
 async def build_lookup(
     build_id: str,
-    char_info: dict[str, str],
-    thread_id: str | None = None,
-    active_build_id: str | None = None,
+    char_info: dict[str, str] | None = None,
 ) -> str:
     """
     Resolve build metadata by stable build_id.
     """
-    resolved = await fetch_build_view_by_id(build_id=build_id, char_info=char_info)
+    normalized_char_info: dict[str, str] = {}
+    if isinstance(char_info, dict):
+        normalized_char_info = {
+            "class": str(char_info.get("class", "")),
+            "spec": str(char_info.get("spec", "")),
+            "role": str(char_info.get("role", "")),
+        }
+    elif char_info is not None:
+        normalized_char_info = {
+            "class": str(getattr(char_info, "wow_class", "")),
+            "spec": str(getattr(char_info, "spec", "")),
+            "role": str(getattr(char_info, "role", "")),
+        }
+
+    if not normalized_char_info:
+        return "No results found."
+
+    resolved = await fetch_build_view_by_id(
+        build_id=build_id,
+        char_info=normalized_char_info,
+    )
     if resolved is None:
         return "No results found."
+
+    decoded_nodes = _extract_decoded_nodes_from_context(
+        resolved.get("selections"), resolved.get("selected_nodes")
+    )
+
     return json.dumps(
         {
             "tool": "build_lookup",
             "build_id": resolved["build_id"],
             "hero_talent": resolved["hero_talent"],
             "scenario": resolved["scenario"],
+            "environment": resolved["environment"],
             "patch": resolved["patch"],
             "source": resolved["source"],
+            "import_code": resolved["import_code"],
+            "decoded_nodes": decoded_nodes,
+            "build_info": {
+                "build_id": resolved["build_id"],
+                "import_code": resolved["import_code"],
+                "wow_class": normalized_char_info.get("class", ""),
+                "spec": normalized_char_info.get("spec", ""),
+                "decoded_nodes": decoded_nodes,
+                "hero_talent": resolved["hero_talent"],
+                "environment": resolved["environment"],
+                "scenario": resolved["scenario"],
+                "source": resolved["source"],
+                "patch": resolved["patch"],
+            },
+            "citations": [],
+            "response_metadata": {"citations": []},
             "feedback": (
                 "User is looking to the build on the UI, you should say: "
                 "'Here is the build you are looking for' + some short description "
                 "of the build + link to the source of the build."
             ),
+            "build": resolved["build"],
         },
         ensure_ascii=True,
     )
@@ -80,10 +126,14 @@ async def fetch_build_view_by_id(
 
     return {
         "build_id": build.id,
+        "import_code": build.import_code,
         "hero_talent": str(build.hero_talent or ""),
+        "environment": str(build.environment or ""),
         "scenario": str(build.scenario or ""),
         "source": str(build.source or ""),
         "patch": str(build.patch or ""),
+        "selected_nodes": build.selected_nodes if isinstance(build.selected_nodes, list) else [],
+        "selections": build.selections if isinstance(build.selections, list) else [],
         "build": {
             "importString": build.import_code,
             "specId": str(build.wow_spec or normalized_spec),
@@ -94,6 +144,33 @@ async def fetch_build_view_by_id(
             "trees": tree_payload.get("trees", []),
         },
     }
+
+
+def _extract_decoded_nodes_from_context(
+    selections: object | None, selected_nodes: object | None
+) -> list[str]:
+    decoded_nodes: list[str] = []
+    if isinstance(selections, list):
+        for entry in selections:
+            if not isinstance(entry, dict):
+                continue
+            node_id = str(entry.get("nodeId") or entry.get("node_id") or "").strip()
+            if node_id:
+                decoded_nodes.append(node_id)
+    if not decoded_nodes and isinstance(selected_nodes, list):
+        decoded_nodes = [
+            str(item).strip() for item in selected_nodes if str(item).strip()
+        ]
+
+    # Preserve order and drop duplicates.
+    unique_nodes: list[str] = []
+    seen: set[str] = set()
+    for node_id in decoded_nodes:
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        unique_nodes.append(node_id)
+    return unique_nodes
 
 
 def _build_tree_payload(build: BuildModel) -> dict:
@@ -304,30 +381,6 @@ def _coerce_tree_entries(
     if not entries and fallback_tree_id:
         entries.append({"id": str(fallback_tree_id), "kind": "spec", "name": ""})
     return entries
-
-
-def _normalize_environment(value: str) -> str:
-    lowered = str(value).strip().lower()
-    if lowered in {"dg", "dungeon", "mythic", "m+"}:
-        return "dungeon"
-    if lowered in {"raid", "raiding"}:
-        return "raid"
-    if lowered in {"pvp", "arena", "bg"}:
-        return "pvp"
-    return lowered or "general"
-
-
-def _normalize_build_mode(value: str) -> str:
-    lowered = str(value).strip().lower()
-    if lowered in {"single", "single_target"}:
-        return "single"
-    if lowered in {"aoe", "cleave"}:
-        return "aoe"
-    if lowered in {"3x3", "3v3"}:
-        return "3x3"
-    if lowered in {"2x2", "2v2"}:
-        return "2x2"
-    return lowered
 
 
 def _to_int(value: object, default: int = 0) -> int:
