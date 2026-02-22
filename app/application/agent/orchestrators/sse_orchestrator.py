@@ -35,7 +35,6 @@ from .strategies import (
     create_default_strategy_registry,
 )
 
-
 # Debounce interval for LLM chunks (in seconds)
 DEBOUNCE_INTERVAL_MS = 50
 DEBOUNCE_INTERVAL_S = DEBOUNCE_INTERVAL_MS / 1000

@@ -8,7 +8,12 @@ from fastapi import Depends, Request
 from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.services import ChatService, ThreadService, create_chat_service, create_thread_service
+from app.application.services import (
+    ChatService,
+    ThreadService,
+    create_chat_service,
+    create_thread_service,
+)
 from app.infrastructure.database import (
     MessageRepositoryImpl,
     ThreadRepositoryImpl,

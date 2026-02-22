@@ -22,3 +22,6 @@ Common examples:
 - introducing a new SSE event kind or changing stream payload semantics,
 - adding new tool execution/persistence behavior across orchestrator and observer paths,
 - changing repository/service boundaries or adding a new integration surface.
+
+## When To Trigger `langchain-doc-inspector`
+Trigger this global skill before changing LangChain/LangGraph behavior (graph wiring, subgraph routing, node contracts, tool schemas, prompt structure, or streaming callbacks).

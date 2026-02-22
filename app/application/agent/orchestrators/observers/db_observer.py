@@ -5,13 +5,12 @@ Database observer for persisting messages during streaming.
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from langchain_core.messages import BaseMessage
 
 from app.domain import Message, MessageRole, ToolCall
-from app.domain.repositories import ThreadRepository
-from app.domain.repositories import MessageRepository
+from app.domain.repositories import MessageRepository, ThreadRepository
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +133,7 @@ class DatabaseObserver:
             thread_id=self.thread_id,
             role=MessageRole.AI,
             content=str(data["content"]),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             tool_calls=tool_calls,
             reasoning="partial_stream" if is_partial else None,
             response_metadata=(
@@ -156,7 +155,7 @@ class DatabaseObserver:
             thread_id=self.thread_id,
             role=MessageRole.TOOL,
             content=output,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             tool_call_id=tool_call_id,
             tool_result=output,
         )

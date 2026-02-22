@@ -159,24 +159,24 @@ O agente usa LangGraph para orquestração:
 ### Criar nova migration
 
 ```bash
-alembic revision --autogenerate -m "description"
+uv run alembic revision --autogenerate -m "description"
 ```
 
 ### Aplicar migrations
 
 ```bash
-alembic upgrade head
+uv run alembic upgrade head
 ```
 
 ### Lint
 
 ```bash
-ruff check .
-ruff format .
+uv run ruff check .
+uv run ruff format .
 ```
 
 ### Testes
 
 ```bash
-pytest
+uv run pytest
 ```
