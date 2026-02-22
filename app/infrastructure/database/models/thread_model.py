@@ -23,6 +23,7 @@ class ThreadModel(Base):
     wow_role: Mapped[str] = mapped_column(String(20), nullable=False)
     active_build_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     active_build_info: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    coaching_state: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

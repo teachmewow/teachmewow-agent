@@ -127,6 +127,11 @@ class ChatService:
                 )
             ),
             build_info=persisted_build_info,
+            coach_plan=(
+                persisted_thread.coaching_state
+                if isinstance(persisted_thread.coaching_state, dict)
+                else {}
+            ),
         )
 
         # Set up database observer for automatic AI message persistence

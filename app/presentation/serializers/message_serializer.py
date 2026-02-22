@@ -62,6 +62,7 @@ def serialize_thread(thread: Thread) -> ThreadResponse:
         wow_role=thread.wow_role,
         active_build_id=thread.active_build_id,
         active_build_info=thread.active_build_info,
+        coaching_state=thread.coaching_state,
         title=thread.title,
         created_at=thread.created_at.isoformat(),
         updated_at=thread.updated_at.isoformat(),

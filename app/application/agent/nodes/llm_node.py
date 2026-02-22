@@ -26,6 +26,7 @@ class LLMNode:
         chat_history = self.mount_chat_history(state)
         response = await self._stream_llm_response(self.model, chat_history, config)
         if isinstance(response, AIMessage) and not response.tool_calls:
+            response = self._attach_coach_plan(response, state.coach_plan)
             citations = self._collect_citations(state.messages)
             if citations:
                 response = self._attach_citations(response, citations)
@@ -127,4 +128,13 @@ class LLMNode:
 
         response_metadata = dict(getattr(response, "response_metadata", {}) or {})
         response_metadata["citations"] = selected
+        return response.model_copy(update={"response_metadata": response_metadata})
+
+    def _attach_coach_plan(self, response: AIMessage, coach_plan: object) -> AIMessage:
+        if not coach_plan:
+            return response
+        if not isinstance(coach_plan, dict):
+            raise RuntimeError("LLMNode: coach_plan must be a dict")
+        response_metadata = dict(getattr(response, "response_metadata", {}) or {})
+        response_metadata["coach_plan"] = coach_plan
         return response.model_copy(update={"response_metadata": response_metadata})

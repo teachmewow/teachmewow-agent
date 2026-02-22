@@ -34,12 +34,16 @@ class _InMemoryThreadRepository:
     def __init__(self) -> None:
         self.active_build_id = None
         self.active_build_info = None
+        self.coaching_state = None
 
     async def set_active_build_id(self, thread_id: str, build_id: str) -> None:
         self.active_build_id = build_id
 
     async def set_active_build_info(self, thread_id: str, active_build_info: dict | None) -> None:
         self.active_build_info = active_build_info
+
+    async def set_coaching_state(self, thread_id: str, coaching_state: dict | None) -> None:
+        self.coaching_state = coaching_state
 
 
 class _Chunk:
@@ -151,3 +155,43 @@ async def test_database_observer_persists_internal_events() -> None:
     assert thread_repo.active_build_id == "b-123"
     assert thread_repo.active_build_info is not None
     assert thread_repo.active_build_info.get("build_id") == "b-123"
+
+
+@pytest.mark.asyncio
+async def test_database_observer_persists_coaching_state_events() -> None:
+    message_repo = _InMemoryMessageRepository()
+    thread_repo = _InMemoryThreadRepository()
+    observer = DatabaseObserver(
+        message_repository=message_repo,
+        thread_repository=thread_repo,
+        thread_id="thread-1",
+    )
+
+    await observer.on_event(
+        StreamEvent(
+            event="plan_init",
+            data={
+                "payload": {
+                    "plan_id": "plan-1",
+                    "version": 1,
+                    "steps": [],
+                }
+            },
+        )
+    )
+    await observer.on_event(
+        StreamEvent(
+            event="plan_update",
+            data={
+                "payload": {
+                    "plan_id": "plan-1",
+                    "version": 2,
+                    "steps": [{"id": "core_skills", "status": "completed"}],
+                }
+            },
+        )
+    )
+
+    assert thread_repo.coaching_state is not None
+    assert thread_repo.coaching_state["plan_id"] == "plan-1"
+    assert thread_repo.coaching_state["version"] == 2

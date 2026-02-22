@@ -54,6 +54,9 @@ class DatabaseObserver:
         if event.event == "persist_tool_message":
             await self._handle_tool_persistence_event(event.data)
             return
+        if event.event in {"plan_init", "plan_update"}:
+            await self._handle_coaching_state_event(event.data)
+            return
         return
 
     async def _persist_active_build_context(self, content: str) -> None:
@@ -165,6 +168,12 @@ class DatabaseObserver:
         except Exception:
             self._saved_tool_call_ids.discard(tool_call_id)
             raise
+
+    async def _handle_coaching_state_event(self, data: dict) -> None:
+        payload = data.get("payload")
+        if not isinstance(payload, dict):
+            raise RuntimeError("DatabaseObserver: coaching payload must be a dict")
+        await self.thread_repository.set_coaching_state(self.thread_id, payload)
 
     def _parse_tool_calls(self, raw_tool_calls: object) -> list[ToolCall] | None:
         if not raw_tool_calls:

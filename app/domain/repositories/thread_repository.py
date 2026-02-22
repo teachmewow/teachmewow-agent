@@ -96,3 +96,7 @@ class ThreadRepository(Protocol):
     async def set_active_build_info(self, thread_id: str, active_build_info: dict | None) -> None:
         """Persist the active build context for a thread."""
         ...
+
+    async def set_coaching_state(self, thread_id: str, coaching_state: dict | None) -> None:
+        """Persist latest coaching checklist state for a thread."""
+        ...
