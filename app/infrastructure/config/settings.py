@@ -4,9 +4,14 @@ Loads configuration from environment variables.
 """
 
 from functools import lru_cache
+from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+ENV_FILE_PATH = REPO_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -16,7 +21,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE_PATH),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -74,4 +79,6 @@ def get_settings() -> Settings:
     Get cached settings instance.
     Uses lru_cache to avoid reading env vars on every call.
     """
+    # Ensure non-pydantic envs (e.g. LANGSMITH_*) are available to third-party SDKs.
+    load_dotenv(dotenv_path=ENV_FILE_PATH, override=False)
     return Settings()
