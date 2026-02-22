@@ -38,6 +38,7 @@ This document is the source of truth for `teachmewow-agent` architecture, layer 
 - Supported runtime events are validated before persistence-sensitive handling.
 - `on_chat_model_stream` and `on_chat_model_end` must include `run_id` and expected payload fields.
 - `on_tool_start` and `on_tool_end` must include `run_id`; tool end must include output.
+- Coach lifecycle events are normalized from `on_custom_event` into `plan_init` and `plan_update`.
 
 ### Tool Call / Result Linkage
 - Tool persistence requires a valid `tool_call_id` mapping.
@@ -49,6 +50,8 @@ This document is the source of truth for `teachmewow-agent` architecture, layer 
 - Partial AI output may be persisted on failures when buffered content exists.
 - Duplicate writes are guarded by per-run / per-tool-call idempotency checks.
 - Stream always emits a terminal event (`done` or `error`).
+- Thread-level checklist snapshots are persisted as `threads.coaching_state`.
+- Final AI responses may include `response_metadata.coach_plan` for hydration.
 
 ## Public Interface Notes
 - Primary chat endpoint: `POST /agent/chat`.
