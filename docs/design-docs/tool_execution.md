@@ -12,6 +12,8 @@ Explain tool event lifecycle, payload handling, and extension rules.
 ## Payload Normalization
 - Tool output may arrive as plain values, structured dicts, or objects with `content`.
 - Runtime normalizes output into string payloads for persistence and downstream consumption.
+- `build_lookup` output is parsed to persist `active_build_id` and `active_build_info`.
+- `guide_context_lookup` output carries deterministic `citations` used by AI response metadata.
 
 ## Extension Rules
 When adding a new tool:
@@ -19,6 +21,7 @@ When adding a new tool:
 - ensure tool start/end events remain linkable through run id + tool call id,
 - return deterministic, serializable outputs,
 - document tool-specific output shape if clients depend on it.
+- prefer canonical enum values in tool args (no alias values for persisted filters).
 
 ## Failure Modes
 - Missing tool start for a tool end event is a runtime contract error.
