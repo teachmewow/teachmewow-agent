@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Literal
+from typing import Literal, Optional
 
 from langchain_core.callbacks.manager import adispatch_custom_event
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -41,7 +41,7 @@ class MissionGateNode:
     async def __call__(
         self,
         state: AgentState,
-        config: RunnableConfig | None = None,
+        config: Optional[RunnableConfig] = None,  # noqa: UP045
     ) -> AgentState:
         if state.route != "coach":
             return {"mission_gate": {}}

@@ -7,10 +7,10 @@ Returns a build payload compatible with the frontend talent tree renderer.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Annotated, Any
 
 from langchain_core.tools import tool
-from pydantic import BaseModel, Field
+from langgraph.prebuilt.tool_node import InjectedState
 from sqlalchemy import select
 
 from app.infrastructure.database.connection import get_session
@@ -18,14 +18,10 @@ from app.infrastructure.database.models import BuildModel
 from app.infrastructure.helix.client import get_helix_client
 
 
-class BuildLookupInput(BaseModel):
-    build_id: str = Field(..., min_length=1)
-
-
-@tool(args_schema=BuildLookupInput)
+@tool
 async def build_lookup(
     build_id: str,
-    char_info: dict[str, str] | None = None,
+    char_info: Annotated[object, InjectedState("char_info")] = None,
 ) -> str:
     """
     Resolve build metadata by stable build_id.

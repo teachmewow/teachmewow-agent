@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from langchain_core.callbacks.manager import adispatch_custom_event
 from langchain_core.runnables import RunnableConfig
 
@@ -15,7 +17,7 @@ class CoachPlanNode:
     async def __call__(
         self,
         state: AgentState,
-        config: RunnableConfig | None = None,
+        config: Optional[RunnableConfig] = None,  # noqa: UP045
     ) -> AgentState:
         if state.route != "coach":
             return {}

@@ -8,27 +8,21 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Annotated, Any
 
 from langchain_core.tools import tool
-from pydantic import BaseModel, Field
+from langgraph.prebuilt.tool_node import InjectedState
 
 from app.infrastructure.helix.client import get_helix_client
 
 
-class GuideContextLookupInput(BaseModel):
-    question: str = Field(..., min_length=1)
-    source_id: str | None = None
-    result_limit: int = Field(default=6, ge=1, le=12)
-
-
-@tool(args_schema=GuideContextLookupInput)
+@tool
 async def guide_context_lookup(
     question: str,
     source_id: str | None = None,
     result_limit: int = 6,
-    char_info: dict[str, str] | None = None,
-    build_info: dict[str, Any] | None = None,
+    char_info: Annotated[object, InjectedState("char_info")] = None,
+    build_info: Annotated[object, InjectedState("build_info")] = None,
 ) -> str:
     """
     Fetch guide evidence for coaching responses.

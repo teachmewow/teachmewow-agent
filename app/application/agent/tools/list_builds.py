@@ -7,30 +7,23 @@ Lists available build IDs for character context and optional filters.
 from __future__ import annotations
 
 import json
-from typing import Literal
+from typing import Annotated, Literal
 
 from langchain_core.tools import tool
-from pydantic import BaseModel, Field
+from langgraph.prebuilt.tool_node import InjectedState
 from sqlalchemy import select
 
 from app.infrastructure.database.connection import get_session
 from app.infrastructure.database.models import BuildModel
 
 
-class ListBuildsInput(BaseModel):
-    environment: Literal["raid", "mythic_plus", "delves"] | None = Field(default=None)
-    mode: Literal["single", "aoe"] | None = Field(default=None)
-    hero_talent: Literal["slayer", "colossus"] | None = Field(default=None)
-    limit: int = Field(default=10)
-
-
-@tool(args_schema=ListBuildsInput)
+@tool
 async def list_builds(
     environment: Literal["raid", "mythic_plus", "delves"] | None = None,
     mode: Literal["single", "aoe"] | None = None,
     hero_talent: Literal["slayer", "colossus"] | None = None,
     limit: int = 10,
-    char_info: dict[str, str] | None = None,
+    char_info: Annotated[object, InjectedState("char_info")] = None,
 ) -> str:
     """
     List available builds for a class/spec/role with optional filters.
