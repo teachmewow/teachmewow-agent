@@ -14,3 +14,11 @@ For focused implementation topics (streaming, mapping, tools, persistence), see 
 
 ## Where To Find Frontend Integration Contract
 For API/SSE expectations for UI clients, see [docs/FRONTEND.md](docs/FRONTEND.md).
+
+## When To Trigger `architecture-analyzer`
+Trigger the global `architecture-analyzer` skill before implementation when backend work changes contracts, orchestration, or extension boundaries.
+
+Common examples:
+- introducing a new SSE event kind or changing stream payload semantics,
+- adding new tool execution/persistence behavior across orchestrator and observer paths,
+- changing repository/service boundaries or adding a new integration surface.
