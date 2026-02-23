@@ -37,7 +37,10 @@ OPTIONAL_MISSION_TAGS: tuple[MissionTag, ...] = (
 )
 
 MIN_PLAN_STEPS = 2
-MAX_PLAN_STEPS = 5
+MAX_PLAN_STEPS = 4
+MAX_PLAN_TITLE_CHARS = 56
+MAX_PLAN_STEP_DESCRIPTION_CHARS = 90
+MAX_PLAN_OBSERVATION_CHARS = 140
 _STEP_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
 
 
@@ -75,7 +78,23 @@ class CoachPlanStep(BaseModel):
         normalized = str(value or "").strip()
         if not normalized:
             raise ValueError("description is required")
+        if len(normalized) > MAX_PLAN_STEP_DESCRIPTION_CHARS:
+            raise ValueError(
+                f"description must be <= {MAX_PLAN_STEP_DESCRIPTION_CHARS} chars"
+            )
         return normalized
+
+    @field_validator("observations")
+    @classmethod
+    def validate_observations(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        if len(normalized) > MAX_PLAN_OBSERVATION_CHARS:
+            raise ValueError(
+                f"observations must be <= {MAX_PLAN_OBSERVATION_CHARS} chars"
+            )
+        return normalized or None
 
 
 class CoachPlanStepUpdate(BaseModel):
@@ -90,6 +109,18 @@ class CoachPlanStepUpdate(BaseModel):
     def validate_id(cls, value: str) -> str:
         return _validate_step_id(value)
 
+    @field_validator("observations")
+    @classmethod
+    def validate_observations(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        if len(normalized) > MAX_PLAN_OBSERVATION_CHARS:
+            raise ValueError(
+                f"observations must be <= {MAX_PLAN_OBSERVATION_CHARS} chars"
+            )
+        return normalized or None
+
 
 class CoachPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -101,6 +132,16 @@ class CoachPlan(BaseModel):
     last_phase: Literal["init", "tool_iteration", "gate_evaluation"] = "init"
     should_ask_clarification: bool | None = None
     missing_fields: list[str] = Field(default_factory=list)
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        normalized = str(value or "").strip()
+        if not normalized:
+            raise ValueError("title is required")
+        if len(normalized) > MAX_PLAN_TITLE_CHARS:
+            raise ValueError(f"title must be <= {MAX_PLAN_TITLE_CHARS} chars")
+        return normalized
 
     @model_validator(mode="after")
     def validate_invariants(self) -> CoachPlan:
@@ -214,6 +255,10 @@ class CoachPlanDraftStep(BaseModel):
         normalized = str(value or "").strip()
         if not normalized:
             raise ValueError("description is required")
+        if len(normalized) > MAX_PLAN_STEP_DESCRIPTION_CHARS:
+            raise ValueError(
+                f"description must be <= {MAX_PLAN_STEP_DESCRIPTION_CHARS} chars"
+            )
         return normalized
 
 
@@ -229,6 +274,8 @@ class CoachPlanDraft(BaseModel):
         normalized = str(value or "").strip()
         if not normalized:
             raise ValueError("title is required")
+        if len(normalized) > MAX_PLAN_TITLE_CHARS:
+            raise ValueError(f"title must be <= {MAX_PLAN_TITLE_CHARS} chars")
         return normalized
 
     @model_validator(mode="after")

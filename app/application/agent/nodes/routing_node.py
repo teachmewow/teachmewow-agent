@@ -32,6 +32,8 @@ class RoutingNode:
             return {"route": "default"}
         if _is_smalltalk_or_ack(user_text):
             return {"route": "default"}
+        if _is_non_actionable_short_text(user_text):
+            return {"route": "default"}
 
         try:
             structured = self.classifier_model.with_structured_output(RouteDecision)
@@ -80,9 +82,35 @@ _SMALLTALK_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_COACH_CUE_PATTERN = re.compile(
+    (
+        r"\b("
+        r"rotation|rotacao|rotação|opener|priority|prioridade|cooldown|cds?|gcd|"
+        r"execute|how to play|como jogar|tips?|dicas?|mistake|erro|improve|"
+        r"melhorar|optimi[sz]e|otimizar|raid|mythic\+|mythic_plus|delves?"
+        r")\b"
+    ),
+    re.IGNORECASE,
+)
+
 
 def _is_smalltalk_or_ack(text: str) -> bool:
-    normalized = str(text or "").strip()
+    normalized = _normalize_for_intent(str(text or ""))
     if not normalized:
         return True
     return _SMALLTALK_PATTERN.fullmatch(normalized) is not None
+
+
+def _is_non_actionable_short_text(text: str) -> bool:
+    normalized = _normalize_for_intent(text)
+    if not normalized:
+        return True
+    if _COACH_CUE_PATTERN.search(normalized):
+        return False
+    return len(normalized.split()) <= 4
+
+
+def _normalize_for_intent(text: str) -> str:
+    lowered = str(text or "").strip().lower()
+    cleaned = re.sub(r"[^\w\s]+", " ", lowered, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", cleaned, flags=re.UNICODE).strip()

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Annotated, Any
+from urllib.parse import urlparse
 
 from langchain_core.tools import tool
 from langgraph.prebuilt.tool_node import InjectedState
@@ -36,9 +37,14 @@ async def guide_context_lookup(
         return "No results found."
 
     capped_limit = max(1, min(int(result_limit or 1), 12))
-    normalized_source = str(source_id or "").strip().lower() or None
 
     helix_client = get_helix_client()
+    normalized_source = _normalize_source_filter(
+        source_id=source_id,
+        wow_class=wow_class,
+        wow_spec=wow_spec,
+        helix_client=helix_client,
+    )
     query_name = (
         "SearchGuideChunksByTextAndSource"
         if normalized_source
@@ -63,9 +69,11 @@ async def guide_context_lookup(
     chunks = _extract_chunk_records(result.data)[:capped_limit]
     citations = []
     evidence = []
+    chunk_markers = []
     for chunk in chunks:
         chunk_id = str(chunk.get("chunk_id") or "").strip()
         marker = _build_marker(chunk_id)
+        chunk_markers.append(marker)
         heading_path = chunk.get("heading_path")
         if not isinstance(heading_path, list):
             heading_path = []
@@ -86,7 +94,7 @@ async def guide_context_lookup(
                 "chunk_id": chunk_id,
                 "source_id": str(chunk.get("source_id") or ""),
                 "heading_path": heading_path,
-                "text": snippet,
+                "text": snippet[:360],
             }
         )
 
@@ -95,8 +103,9 @@ async def guide_context_lookup(
         "question": normalized_question,
         "source_id": normalized_source,
         "result_limit": capped_limit,
+        "result_count": len(chunks),
         "active_build_id": _extract_build_id(build_info),
-        "chunks": chunks,
+        "markers": chunk_markers,
         "evidence": evidence,
         "citations": citations,
         "response_metadata": {"citations": citations},
@@ -135,6 +144,73 @@ def _build_marker(chunk_id: str) -> str:
     if not normalized:
         return "source_unknown"
     return f"source_{normalized}"
+
+
+def _normalize_source_filter(
+    *,
+    source_id: str | None,
+    wow_class: str,
+    wow_spec: str,
+    helix_client,
+) -> str | None:
+    raw = str(source_id or "").strip()
+    if not raw:
+        return None
+    lowered = raw.lower()
+    if not _looks_like_url(lowered):
+        return lowered
+
+    normalized_url = _normalize_url(lowered)
+    try:
+        result = helix_client.query(
+            "ListGuideSources",
+            {"wow_class": wow_class, "wow_spec": wow_spec},
+        )
+    except Exception:
+        return None
+
+    for record in _extract_source_records(result.data):
+        candidate_id = str(record.get("source_id") or "").strip().lower()
+        candidate_url = _normalize_url(str(record.get("url") or "").strip().lower())
+        if not candidate_id or not candidate_url:
+            continue
+        if candidate_url == normalized_url:
+            return candidate_id
+    return None
+
+
+def _looks_like_url(value: str) -> bool:
+    return value.startswith("http://") or value.startswith("https://")
+
+
+def _normalize_url(value: str) -> str:
+    if not value:
+        return ""
+    parsed = urlparse(value)
+    path = parsed.path.rstrip("/")
+    return f"{parsed.scheme}://{parsed.netloc}{path}"
+
+
+def _extract_source_records(payload: object) -> list[dict]:
+    if payload is None:
+        return []
+    if isinstance(payload, list):
+        records: list[dict] = []
+        for item in payload:
+            if isinstance(item, dict):
+                if isinstance(item.get("sources"), list):
+                    for source in item["sources"]:
+                        if isinstance(source, dict):
+                            records.append(source)
+                else:
+                    records.append(item)
+        return records
+    if isinstance(payload, dict):
+        sources = payload.get("sources")
+        if isinstance(sources, list):
+            return [item for item in sources if isinstance(item, dict)]
+        return [payload]
+    return []
 
 
 def _extract_chunk_records(payload: object) -> list[dict]:

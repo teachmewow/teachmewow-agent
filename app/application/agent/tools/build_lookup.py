@@ -43,7 +43,7 @@ async def build_lookup(
     if not normalized_char_info:
         return "No results found."
 
-    resolved = await fetch_build_view_by_id(
+    resolved = await fetch_build_metadata_by_id(
         build_id=build_id,
         char_info=normalized_char_info,
     )
@@ -80,17 +80,15 @@ async def build_lookup(
             "citations": [],
             "response_metadata": {"citations": []},
             "feedback": (
-                "User is looking to the build on the UI, you should say: "
-                "'Here is the build you are looking for' + some short description "
-                "of the build + link to the source of the build."
+                "Build returned. Tell user: "
+                "'Look at View Talent Tree to see the complete tree.'"
             ),
-            "build": resolved["build"],
         },
         ensure_ascii=True,
     )
 
 
-async def fetch_build_view_by_id(
+async def fetch_build_metadata_by_id(
     build_id: str,
     char_info: dict[str, str],
 ) -> dict[str, Any] | None:
@@ -116,10 +114,6 @@ async def fetch_build_view_by_id(
     if not build:
         return None
 
-    tree_payload = _normalize_tree_payload(build.tree_payload, build.tree_snapshot_id)
-    if tree_payload is None:
-        tree_payload = _build_tree_payload(build)
-
     return {
         "build_id": build.id,
         "import_code": build.import_code,
@@ -128,15 +122,57 @@ async def fetch_build_view_by_id(
         "scenario": str(build.scenario or ""),
         "source": str(build.source or ""),
         "patch": str(build.patch or ""),
-        "selected_nodes": build.selected_nodes if isinstance(build.selected_nodes, list) else [],
+        "selected_nodes": build.selected_nodes
+        if isinstance(build.selected_nodes, list)
+        else [],
         "selections": build.selections if isinstance(build.selections, list) else [],
+        "tree_payload": build.tree_payload,
+        "tree_snapshot_id": build.tree_snapshot_id,
+        "tree_snapshot_ids": build.tree_snapshot_ids,
+        "wow_spec": str(build.wow_spec or normalized_spec),
+        "updated_at": build.updated_at,
+    }
+
+
+async def fetch_build_view_by_id(
+    build_id: str,
+    char_info: dict[str, str],
+) -> dict[str, Any] | None:
+    metadata = await fetch_build_metadata_by_id(build_id=build_id, char_info=char_info)
+    if metadata is None:
+        return None
+
+    tree_payload = _normalize_tree_payload(
+        metadata.get("tree_payload"),
+        str(metadata.get("tree_snapshot_id") or ""),
+    )
+    if tree_payload is None:
+        tree_payload = _build_tree_payload(
+            metadata.get("selections"),
+            metadata.get("selected_nodes"),
+            metadata.get("tree_snapshot_ids"),
+            metadata.get("tree_snapshot_id"),
+        )
+
+    return {
+        "build_id": metadata["build_id"],
+        "import_code": metadata["import_code"],
+        "hero_talent": metadata["hero_talent"],
+        "environment": metadata["environment"],
+        "scenario": metadata["scenario"],
+        "source": metadata["source"],
+        "patch": metadata["patch"],
+        "selected_nodes": metadata["selected_nodes"],
+        "selections": metadata["selections"],
         "build": {
-            "importString": build.import_code,
-            "specId": str(build.wow_spec or normalized_spec),
-            "scenario": str(build.scenario or ""),
-            "source": str(build.source or ""),
-            "updatedAt": build.updated_at.isoformat() if build.updated_at else None,
-            "patch": str(build.patch or ""),
+            "importString": metadata["import_code"],
+            "specId": metadata["wow_spec"],
+            "scenario": metadata["scenario"],
+            "source": metadata["source"],
+            "updatedAt": (
+                metadata["updated_at"].isoformat() if metadata["updated_at"] else None
+            ),
+            "patch": metadata["patch"],
             "trees": tree_payload.get("trees", []),
         },
     }
@@ -169,10 +205,15 @@ def _extract_decoded_nodes_from_context(
     return unique_nodes
 
 
-def _build_tree_payload(build: BuildModel) -> dict:
+def _build_tree_payload(
+    selections_payload: object | None,
+    selected_nodes_payload: object | None,
+    tree_snapshot_ids_payload: object | None,
+    tree_snapshot_id_payload: object | None,
+) -> dict:
     helix_client = get_helix_client()
-    selections = _normalize_selections(build.selections, build.selected_nodes)
-    tree_entries = _coerce_tree_entries(build.tree_snapshot_ids, build.tree_snapshot_id)
+    selections = _normalize_selections(selections_payload, selected_nodes_payload)
+    tree_entries = _coerce_tree_entries(tree_snapshot_ids_payload, tree_snapshot_id_payload)
     trees: list[dict] = []
     for entry in tree_entries:
         tree_id = entry.get("id", "")

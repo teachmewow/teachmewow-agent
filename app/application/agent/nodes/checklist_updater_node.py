@@ -130,7 +130,9 @@ def _updater_system_prompt(*, feedback: str | None) -> str:
         "- Allowed status values: pending, in_progress, completed, blocked.\n"
         "- Only emit updates for existing step ids already in plan_snapshot.\n"
         "- Do not invent step ids.\n"
-        "- Keep observations concise and evidence-based."
+        "- Do not repeat all steps; update only steps that changed.\n"
+        "- Keep observations concise and evidence-based.\n"
+        "- Observations must be <= 140 chars."
     )
 
 
@@ -196,4 +198,3 @@ def _collect_recent_tool_evidence(messages: list[BaseMessage]) -> str:
             break
 
     return "\n".join(rows)
-

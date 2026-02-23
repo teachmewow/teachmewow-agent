@@ -44,6 +44,13 @@ async def test_routing_smalltalk_with_active_build_stays_default() -> None:
 
 
 @pytest.mark.asyncio
+async def test_routing_smalltalk_with_punctuation_stays_default() -> None:
+    node = RoutingNode(classifier_model=_NeverCalledClassifier())
+    result = await node(_state(text="oi!", with_build=True))
+    assert result["route"] == "default"
+
+
+@pytest.mark.asyncio
 async def test_routing_explicit_coaching_can_go_to_coach() -> None:
     node = RoutingNode(classifier_model=_ClassifierReturns(route="coach"))
     result = await node(

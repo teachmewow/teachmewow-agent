@@ -41,6 +41,12 @@ async def lifespan(app: FastAPI):
     app.state.llm_client = llm_client
     app.state.db_engine = engine
 
+    print(
+        "LLM models configured: "
+        f"main={llm_client.main_model.model_name}, "
+        f"explorer={llm_client.explorer_model.model_name}, "
+        f"classifier={llm_client.classifier_model.model_name}"
+    )
     print("Graph built and ready")
     print(f"Tools available: {[t.name for t in tools]}")
 

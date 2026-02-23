@@ -140,9 +140,67 @@ class MessageMapper:
             return None
 
         # Use tool_result if available, otherwise use content
-        content = msg.tool_result if msg.tool_result else msg.content
+        raw_content = msg.tool_result if msg.tool_result else msg.content
+        content = MessageMapper._compact_tool_message_content(raw_content)
 
         return ToolMessage(
             content=content,
             tool_call_id=msg.tool_call_id,
         )
+
+    @staticmethod
+    def _compact_tool_message_content(raw_content: str | None) -> str:
+        text = str(raw_content or "")
+        parsed = MessageMapper._try_parse_json(text)
+        if not isinstance(parsed, dict):
+            return text[:600]
+
+        tool_name = str(parsed.get("tool") or "").strip().lower()
+        if tool_name == "build_lookup":
+            build_id = str(parsed.get("build_id") or "").strip()
+            hero_talent = str(parsed.get("hero_talent") or "").strip()
+            environment = str(parsed.get("environment") or "").strip()
+            scenario = str(parsed.get("scenario") or "").strip()
+            return (
+                "Build returned. Look at View Talent Tree to see the complete tree. "
+                f"build_id={build_id}; hero_talent={hero_talent}; "
+                f"environment={environment}; scenario={scenario}."
+            )
+
+        if tool_name == "guide_context_lookup":
+            result_count = parsed.get("result_count")
+            if not isinstance(result_count, int):
+                result_count = 0
+            markers = parsed.get("markers")
+            marker_list = []
+            if isinstance(markers, list):
+                marker_list = [str(item).strip() for item in markers if str(item).strip()]
+            evidence = parsed.get("evidence")
+            first_snippet = ""
+            if isinstance(evidence, list) and evidence:
+                first = evidence[0]
+                if isinstance(first, dict):
+                    first_snippet = str(first.get("text") or "").strip()
+            marker_preview = ",".join(marker_list[:4])
+            snippet_preview = first_snippet[:160]
+            return (
+                "Guide context fetched. "
+                f"result_count={result_count}; markers={marker_preview}; "
+                f"first_snippet={snippet_preview}"
+            )
+
+        if tool_name == "list_builds":
+            count = parsed.get("count")
+            return f"List builds completed. count={count}"
+
+        return text[:600]
+
+    @staticmethod
+    def _try_parse_json(value: str) -> dict | None:
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return None
+        if not isinstance(parsed, dict):
+            return None
+        return parsed
