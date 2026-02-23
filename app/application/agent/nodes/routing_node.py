@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -29,17 +30,23 @@ class RoutingNode:
             return {"route": "default"}
         if not user_text:
             return {"route": "default"}
+        if _is_smalltalk_or_ack(user_text):
+            return {"route": "default"}
 
-        fallback_route = "coach" if _looks_like_coaching_request(user_text) else "default"
         try:
             structured = self.classifier_model.with_structured_output(RouteDecision)
             decision = await structured.ainvoke(
                 [
                     SystemMessage(
                         content=(
-                            "Route user intent to one of two options:\n"
-                            "- coach: user asks how to play/rotate/execute/tips for selected build.\n"
-                            "- default: discovery, selection, generic or unrelated request.\n"
+                            "Classify the LAST user message intent into one route:\n"
+                            "- coach: explicit coaching request about gameplay execution for the active build\n"
+                            "  (examples: rotation, opener, priority, cooldown usage, mistake fixing, raid/m+ optimization).\n"
+                            "- default: any other intent (greetings, acknowledgements, small talk, generic chat,\n"
+                            "  build discovery/listing/selection, or vague messages without actionable coaching request).\n"
+                            "Important:\n"
+                            "- has_active_build=true is only an eligibility signal, not intent.\n"
+                            "- If the user did not explicitly ask for coaching guidance in this last message, choose default.\n"
                             "Return strict JSON following schema."
                         )
                     ),
@@ -53,12 +60,12 @@ class RoutingNode:
                     ),
                 ]
             )
-            route = str(getattr(decision, "route", fallback_route) or fallback_route)
+            route = str(getattr(decision, "route", "default") or "default")
             if route not in {"default", "coach"}:
-                route = fallback_route
+                route = "default"
             return {"route": route}
         except Exception:
-            return {"route": fallback_route}
+            return {"route": "default"}
 
 
 def _last_human_message_text(messages: list[BaseMessage]) -> str:
@@ -68,24 +75,14 @@ def _last_human_message_text(messages: list[BaseMessage]) -> str:
     return ""
 
 
-def _looks_like_coaching_request(text: str) -> bool:
-    lowered = text.lower()
-    coaching_tokens = (
-        "rotation",
-        "rotação",
-        "execute",
-        "opener",
-        "cooldown",
-        "priority",
-        "prioridade",
-        "tips",
-        "dicas",
-        "como jogar",
-        "how to play",
-        "gameplay",
-        "mythic+",
-        "mythic plus",
-        "raid",
-        "m+",
-    )
-    return any(token in lowered for token in coaching_tokens)
+_SMALLTALK_PATTERN = re.compile(
+    r"^(oi+|ol[aá]|hello|hi+|hey+|yo+|e ai|e aí|blz|beleza|ok+|valeu|thanks?)$",
+    re.IGNORECASE,
+)
+
+
+def _is_smalltalk_or_ack(text: str) -> bool:
+    normalized = str(text or "").strip()
+    if not normalized:
+        return True
+    return _SMALLTALK_PATTERN.fullmatch(normalized) is not None

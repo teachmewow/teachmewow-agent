@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from langgraph.graph.state import CompiledStateGraph
 
+from app.application.agent.graph.constants import GraphNodeName
 from app.application.agent.state_schema import AgentState, StreamEvent
 from app.application.agent.streaming import (
     build_langchain_stream_event,
@@ -39,6 +40,10 @@ from .strategies import (
 DEBOUNCE_INTERVAL_MS = 50
 DEBOUNCE_INTERVAL_S = DEBOUNCE_INTERVAL_MS / 1000
 logger = logging.getLogger(__name__)
+VISIBLE_LLM_STREAM_NODES = {
+    GraphNodeName.AGENT.value,
+    GraphNodeName.COACH_AGENT.value,
+}
 
 
 @dataclass
@@ -117,6 +122,10 @@ class SSEOrchestrator:
                 raw_event_data = event.get("data")
                 event_data = raw_event_data if isinstance(raw_event_data, dict) else {}
                 event_name = str(event.get("name") or "")
+                if not self._is_user_visible_llm_event(
+                    event_kind=event_kind, event=event
+                ):
+                    continue
 
                 if event_kind in {
                     "on_chat_model_stream",
@@ -181,10 +190,9 @@ class SSEOrchestrator:
         self, event: dict, event_data: dict, runtime_state: _RuntimeState
     ) -> list[str]:
         chunk = event_data["chunk"]
-        if not chunk.content:
+        appended = runtime_state.accumulator.append(content=chunk, event_context=event)
+        if not appended:
             return []
-
-        runtime_state.accumulator.append(content=chunk.content, event_context=event)
 
         if not self._debouncer.should_flush(runtime_state.last_flush_time):
             return []
@@ -293,3 +301,18 @@ class SSEOrchestrator:
         if event_kind == "on_tool_end":
             persist_event = runtime_state.persistence.on_tool_end(event, event_data)
             await self._notifier.notify_event(persist_event)
+
+    def _is_user_visible_llm_event(self, *, event_kind: str, event: dict) -> bool:
+        if event_kind not in {"on_chat_model_stream", "on_chat_model_end"}:
+            return True
+        node_name = self._read_langgraph_node_name(event)
+        return node_name in VISIBLE_LLM_STREAM_NODES
+
+    def _read_langgraph_node_name(self, event: dict) -> str | None:
+        metadata = event.get("metadata")
+        if not isinstance(metadata, dict):
+            return None
+        raw_node = metadata.get("langgraph_node")
+        if not isinstance(raw_node, str) or not raw_node:
+            return None
+        return raw_node

@@ -3,23 +3,27 @@ Typed models for agent-side planning/checklist contracts.
 """
 
 from .coach_plan import (
-    CORE_STEP_IDS,
-    OPTIONAL_STEP_IDS,
+    CORE_MISSION_TAGS,
+    OPTIONAL_MISSION_TAGS,
     CoachPlan,
+    CoachPlanDraft,
+    CoachPlanDraftStep,
     CoachPlanStatus,
     CoachPlanStep,
-    CoachPlanStepId,
     CoachPlanStepUpdate,
+    MissionTag,
     build_default_coach_plan,
 )
 
 __all__ = [
     "CoachPlan",
+    "CoachPlanDraft",
+    "CoachPlanDraftStep",
     "CoachPlanStep",
-    "CoachPlanStepId",
     "CoachPlanStepUpdate",
     "CoachPlanStatus",
-    "CORE_STEP_IDS",
-    "OPTIONAL_STEP_IDS",
+    "MissionTag",
+    "CORE_MISSION_TAGS",
+    "OPTIONAL_MISSION_TAGS",
     "build_default_coach_plan",
 ]

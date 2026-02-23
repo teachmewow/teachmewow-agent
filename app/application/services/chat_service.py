@@ -12,6 +12,7 @@ from app.domain import Message, MessageRole, Thread, WowClass, WowSpec
 from app.domain.repositories import MessageRepository, ThreadRepository
 
 from ..agent import AgentState, DatabaseObserver, MessageMapper, SSEOrchestrator
+from ..agent.models import CoachPlan
 from ..agent.state_schema import BuildInfo, CharInfo
 
 
@@ -111,6 +112,14 @@ class ChatService:
                 )
             except Exception:
                 persisted_build_info = None
+        persisted_coach_plan: dict = {}
+        if isinstance(persisted_thread.coaching_state, dict):
+            try:
+                persisted_coach_plan = CoachPlan.model_validate(
+                    persisted_thread.coaching_state
+                ).model_dump(mode="json")
+            except Exception:
+                persisted_coach_plan = {}
 
         # Create initial state
         state = AgentState(
@@ -127,11 +136,7 @@ class ChatService:
                 )
             ),
             build_info=persisted_build_info,
-            coach_plan=(
-                persisted_thread.coaching_state
-                if isinstance(persisted_thread.coaching_state, dict)
-                else {}
-            ),
+            coach_plan=persisted_coach_plan,
         )
 
         # Set up database observer for automatic AI message persistence

@@ -5,6 +5,7 @@ Runtime components used by SSEOrchestrator.
 from .ai_message_assembler import AIMessageAssembler
 from .chunk_accumulator import ChunkAccumulator
 from .chunk_flusher import ChunkFlusher
+from .content_normalizer import normalize_text_content
 from .debouncer import Debouncer
 from .emit_pipeline import (
     EmitPipeline,
@@ -25,6 +26,7 @@ __all__ = [
     "AIMessageAssembler",
     "ChunkAccumulator",
     "ChunkFlusher",
+    "normalize_text_content",
     "Debouncer",
     "EmitPipeline",
     "EventContractValidator",

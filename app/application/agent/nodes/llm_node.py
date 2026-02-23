@@ -12,6 +12,7 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import RunnableConfig
 
+from app.application.agent.models import CoachPlan
 from app.application.agent.prompts.system_prompt import AGENT_SYSTEM_PROMPT
 from app.application.agent.state_schema import AgentState
 
@@ -135,6 +136,11 @@ class LLMNode:
             return response
         if not isinstance(coach_plan, dict):
             raise RuntimeError("LLMNode: coach_plan must be a dict")
+        try:
+            plan = CoachPlan.model_validate(coach_plan)
+            public_plan = plan.to_public_payload()
+        except Exception as exc:
+            raise RuntimeError("LLMNode: coach_plan payload is invalid") from exc
         response_metadata = dict(getattr(response, "response_metadata", {}) or {})
-        response_metadata["coach_plan"] = coach_plan
+        response_metadata["coach_plan"] = public_plan
         return response.model_copy(update={"response_metadata": response_metadata})

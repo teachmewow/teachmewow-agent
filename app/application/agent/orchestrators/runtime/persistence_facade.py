@@ -7,6 +7,7 @@ from __future__ import annotations
 from app.application.agent.state_schema import StreamEvent
 
 from .ai_message_assembler import AIMessageAssembler
+from .content_normalizer import normalize_text_content
 from .tool_result_assembler import ToolResultAssembler
 
 
@@ -29,7 +30,10 @@ class PersistenceFacade:
         tool_calls = self._read_tool_calls(output)
         response_metadata = self._read_response_metadata(output)
         self._pending_tool_calls = list(tool_calls)
-        assembled = self._ai.complete(run_id=run_id, final_content=final_content)
+        assembled = self._ai.complete(
+            run_id=run_id,
+            final_content=final_content if final_content else None,
+        )
         return StreamEvent(
             event="persist_ai_message",
             data={
@@ -84,11 +88,7 @@ class PersistenceFacade:
             )
 
     def _read_content(self, payload: object) -> str:
-        if hasattr(payload, "content"):
-            return str(payload.content)
-        if isinstance(payload, dict) and "content" in payload:
-            return str(payload["content"])
-        raise RuntimeError("PersistenceFacade: payload missing content")
+        return normalize_text_content(payload)
 
     def _read_tool_calls(self, payload: object) -> list[dict[str, object]]:
         tool_calls: object = []

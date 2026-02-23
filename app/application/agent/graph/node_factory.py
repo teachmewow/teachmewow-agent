@@ -38,7 +38,7 @@ class GraphNodeFactory:
     def build(self) -> GraphNodes:
         return GraphNodes(
             router=RoutingNode(self._models.classifier_model),
-            coach_plan=CoachPlanNode(),
+            coach_plan=CoachPlanNode(self._models.classifier_model),
             agent=LLMNode(self._models.agent_model),
             coach_agent=LLMNode(
                 self._models.coach_model,
