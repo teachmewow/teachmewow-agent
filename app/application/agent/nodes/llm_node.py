@@ -27,6 +27,8 @@ class LLMNode:
         chat_history = self.mount_chat_history(state)
         response = await self._stream_llm_response(self.model, chat_history, config)
         if isinstance(response, AIMessage) and not response.tool_calls:
+            if state.route == "coach":
+                response = self._normalize_coach_response(response)
             response = self._attach_coach_plan(response, state.coach_plan)
             citations = self._collect_citations(state.messages)
             if citations:
@@ -144,3 +146,55 @@ class LLMNode:
         response_metadata = dict(getattr(response, "response_metadata", {}) or {})
         response_metadata["coach_plan"] = public_plan
         return response.model_copy(update={"response_metadata": response_metadata})
+
+    def _normalize_coach_response(self, response: AIMessage) -> AIMessage:
+        content = response.content
+        if not isinstance(content, str):
+            return response
+
+        normalized = self._normalize_citation_density(content, max_unique_markers=5)
+        if normalized == content:
+            return response
+        return response.model_copy(update={"content": normalized})
+
+    def _normalize_citation_density(self, content: str, max_unique_markers: int) -> str:
+        marker_pattern = re.compile(r"\[\[([a-zA-Z0-9_:-]+)\]\]")
+        allowed_markers: set[str] = set()
+        previous_line_marker: str | None = None
+        normalized_lines: list[str] = []
+
+        for line in content.splitlines():
+            markers = marker_pattern.findall(line)
+            if not markers:
+                normalized_lines.append(line)
+                previous_line_marker = None
+                continue
+
+            chosen_marker: str | None = None
+            for marker in markers:
+                if marker in allowed_markers:
+                    chosen_marker = marker
+                    break
+                if len(allowed_markers) >= max_unique_markers:
+                    continue
+                allowed_markers.add(marker)
+                chosen_marker = marker
+                break
+
+            line_without_markers = marker_pattern.sub("", line)
+            line_without_markers = re.sub(r"\s{2,}", " ", line_without_markers).rstrip()
+
+            if chosen_marker and chosen_marker == previous_line_marker:
+                chosen_marker = None
+
+            if chosen_marker:
+                separator = " " if line_without_markers else ""
+                normalized_lines.append(
+                    f"{line_without_markers}{separator}[[{chosen_marker}]]"
+                )
+                previous_line_marker = chosen_marker
+            else:
+                normalized_lines.append(line_without_markers)
+                previous_line_marker = None
+
+        return "\n".join(normalized_lines)

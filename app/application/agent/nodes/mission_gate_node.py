@@ -94,7 +94,8 @@ class MissionGateNode:
             mission_status,
             required_missions=required_missions,
         )
-        should_ask = bool(decision.should_ask_clarification or forced_missing_missions)
+        # Coaching should finalize with best-effort guidance instead of clarification loops.
+        should_ask = False
         required_mission_keys = {mission.value for mission in required_missions}
         missing_fields = [
             item
@@ -103,18 +104,19 @@ class MissionGateNode:
         ]
         missing_fields.extend(forced_missing_missions)
         missing_fields = sorted(set(missing_fields))
+        missing_context_notes = _build_missing_context_notes(missing_fields)
 
         updates = _build_gate_updates(
             plan=plan,
             mission_status=mission_status,
-            should_ask_clarification=should_ask,
+            missing_missions=tuple(missing_fields),
             required_missions=required_missions,
         )
         next_plan = plan.apply_updates(
             updates,
             phase="gate_evaluation",
             should_ask_clarification=should_ask,
-            missing_fields=missing_fields,
+            missing_fields=missing_context_notes,
         )
         public_plan = next_plan.to_public_payload()
 
@@ -126,32 +128,16 @@ class MissionGateNode:
             "updates": [item.model_dump(mode="json") for item in updates],
             "steps": public_plan["steps"],
             "should_ask_clarification": should_ask,
-            "missing_fields": missing_fields,
+            "missing_fields": missing_context_notes,
         }
         await adispatch_custom_event("plan_update", payload, config=config)
 
         gate = {
             "mission_status": mission_status,
-            "missing_fields": missing_fields,
+            "missing_fields": missing_context_notes,
             "should_ask_clarification": should_ask,
             "reason": decision.reason,
         }
-
-        if should_ask and not state.clarification_attempted:
-            gate_with_prompt = {**gate, "_clarification_prompted": True}
-            return {
-                "mission_gate": gate_with_prompt,
-                "clarification_attempted": True,
-                "coach_plan": next_plan.model_dump(mode="json"),
-                "messages": [
-                    SystemMessage(
-                        content=(
-                            "Critical context is missing. Ask exactly one short clarification "
-                            "question before continuing."
-                        )
-                    )
-                ],
-            }
 
         return {"mission_gate": gate, "coach_plan": next_plan.model_dump(mode="json")}
 
@@ -239,32 +225,22 @@ def _build_gate_updates(
     *,
     plan: CoachPlan,
     mission_status: dict[str, Literal["done", "missing"]],
-    should_ask_clarification: bool,
+    missing_missions: tuple[str, ...],
     required_missions: tuple[MissionTag, ...] = CORE_MISSION_TAGS,
 ) -> list[CoachPlanStepUpdate]:
     updates: list[CoachPlanStepUpdate] = []
+    missing_set = set(missing_missions)
     for step in plan.steps:
-        if step.mission_tag not in required_missions:
-            continue
-
-        raw_status = mission_status.get(step.mission_tag.value, "missing")
-        if raw_status == "done":
-            updates.append(
-                CoachPlanStepUpdate(
-                    id=step.id,
-                    status=CoachPlanStatus.COMPLETED,
-                )
-            )
-            continue
-
+        observation: str | None = None
+        if step.mission_tag in required_missions:
+            raw_status = mission_status.get(step.mission_tag.value, "missing")
+            if step.mission_tag.value in missing_set or raw_status != "done":
+                observation = _missing_context_note_for_mission(step.mission_tag)
         updates.append(
             CoachPlanStepUpdate(
                 id=step.id,
-                status=(
-                    CoachPlanStatus.BLOCKED
-                    if should_ask_clarification
-                    else CoachPlanStatus.IN_PROGRESS
-                ),
+                status=CoachPlanStatus.COMPLETED,
+                observations=observation,
             )
         )
     return updates
@@ -283,3 +259,31 @@ def _required_mission_tags_from_plan(plan: CoachPlan) -> tuple[MissionTag, ...]:
     if not ordered:
         raise RuntimeError("MissionGateNode: coach_plan has no core mission steps")
     return tuple(ordered)
+
+
+def _build_missing_context_notes(missing_missions: list[str]) -> list[str]:
+    notes: list[str] = []
+    seen: set[str] = set()
+    for mission_key in missing_missions:
+        try:
+            mission_tag = MissionTag(mission_key)
+        except ValueError:
+            continue
+        note = _missing_context_note_for_mission(mission_tag)
+        if note in seen:
+            continue
+        seen.add(note)
+        notes.append(note)
+    return notes
+
+
+def _missing_context_note_for_mission(mission_tag: MissionTag) -> str:
+    if mission_tag == MissionTag.CORE_SKILLS:
+        return "Missing context: core priority details were not clearly grounded in guide evidence."
+    if mission_tag == MissionTag.BUILD_VS_BASELINE:
+        return "Missing context: build-vs-baseline differences were not explicit in retrieved evidence."
+    if mission_tag == MissionTag.TIPS_AND_TRICKS:
+        return "Missing context: practical scenario tips were limited in retrieved guide chunks."
+    if mission_tag == MissionTag.ASSUMPTIONS_CHECKED:
+        return "Missing context: some setup assumptions (talents/scenario specifics) could not be confirmed."
+    return "Missing context: required supporting evidence was not sufficient for this mission."
