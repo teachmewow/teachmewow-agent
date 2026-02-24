@@ -55,8 +55,12 @@ class MissionGateNode:
             raise RuntimeError("MissionGateNode: missing coach_plan in state")
 
         plan = CoachPlan.model_validate(state.coach_plan)
+        required_missions = _required_mission_tags_from_plan(plan)
         user_text = _last_human_message_text(state.messages)
         evidence_summary = _collect_recent_guide_evidence(state.messages)
+        required_missions_text = "\n".join(
+            f"- {mission.value}" for mission in required_missions
+        )
 
         structured = self.classifier_model.with_structured_output(MissionGateDecision)
         decision = await structured.ainvoke(
@@ -64,11 +68,8 @@ class MissionGateNode:
                 SystemMessage(
                     content=(
                         "Evaluate if coaching context is sufficient.\n"
-                        "Required missions:\n"
-                        "- core_skills\n"
-                        "- build_vs_baseline\n"
-                        "- tips_and_tricks\n"
-                        "- assumptions_checked\n"
+                        "Required missions for this user request:\n"
+                        f"{required_missions_text}\n"
                         "Return strict JSON using schema fields only."
                     )
                 ),
@@ -84,10 +85,22 @@ class MissionGateNode:
             config=config,
         )
 
-        mission_status = _normalize_core_mission_status(decision.mission_status)
-        forced_missing_missions = _forced_missing_core_missions(plan, mission_status)
+        mission_status = _normalize_core_mission_status(
+            decision.mission_status,
+            required_missions=required_missions,
+        )
+        forced_missing_missions = _forced_missing_core_missions(
+            plan,
+            mission_status,
+            required_missions=required_missions,
+        )
         should_ask = bool(decision.should_ask_clarification or forced_missing_missions)
-        missing_fields = list(decision.missing_fields)
+        required_mission_keys = {mission.value for mission in required_missions}
+        missing_fields = [
+            item
+            for item in decision.missing_fields
+            if isinstance(item, str) and item in required_mission_keys
+        ]
         missing_fields.extend(forced_missing_missions)
         missing_fields = sorted(set(missing_fields))
 
@@ -95,6 +108,7 @@ class MissionGateNode:
             plan=plan,
             mission_status=mission_status,
             should_ask_clarification=should_ask,
+            required_missions=required_missions,
         )
         next_plan = plan.apply_updates(
             updates,
@@ -179,18 +193,18 @@ def _collect_recent_guide_evidence(messages: list[BaseMessage]) -> str:
 
 def _normalize_core_mission_status(
     raw_status: list[MissionStatusItem],
+    *,
+    required_missions: tuple[MissionTag, ...] = CORE_MISSION_TAGS,
 ) -> dict[str, Literal["done", "missing"]]:
     normalized: dict[str, Literal["done", "missing"]] = {
-        mission.value: "missing" for mission in CORE_MISSION_TAGS
+        mission.value: "missing" for mission in required_missions
     }
     seen: set[str] = set()
     for mission_item in raw_status:
         mission_key = mission_item.mission_tag.value
         mission_value = mission_item.status
         if mission_key not in normalized:
-            raise RuntimeError(
-                f"MissionGateNode: unknown mission key '{mission_key}' in mission_status"
-            )
+            continue
         if mission_key in seen:
             raise RuntimeError(
                 f"MissionGateNode: duplicate mission key '{mission_key}' in mission_status"
@@ -205,10 +219,13 @@ def _normalize_core_mission_status(
 
 
 def _forced_missing_core_missions(
-    plan: CoachPlan, mission_status: dict[str, Literal["done", "missing"]]
+    plan: CoachPlan,
+    mission_status: dict[str, Literal["done", "missing"]],
+    *,
+    required_missions: tuple[MissionTag, ...] = CORE_MISSION_TAGS,
 ) -> list[str]:
     missing: list[str] = []
-    for mission_tag in CORE_MISSION_TAGS:
+    for mission_tag in required_missions:
         raw_status = mission_status.get(mission_tag.value, "missing")
         if raw_status == "done":
             continue
@@ -223,10 +240,11 @@ def _build_gate_updates(
     plan: CoachPlan,
     mission_status: dict[str, Literal["done", "missing"]],
     should_ask_clarification: bool,
+    required_missions: tuple[MissionTag, ...] = CORE_MISSION_TAGS,
 ) -> list[CoachPlanStepUpdate]:
     updates: list[CoachPlanStepUpdate] = []
     for step in plan.steps:
-        if step.mission_tag not in CORE_MISSION_TAGS:
+        if step.mission_tag not in required_missions:
             continue
 
         raw_status = mission_status.get(step.mission_tag.value, "missing")
@@ -250,3 +268,18 @@ def _build_gate_updates(
             )
         )
     return updates
+
+
+def _required_mission_tags_from_plan(plan: CoachPlan) -> tuple[MissionTag, ...]:
+    ordered: list[MissionTag] = []
+    seen: set[MissionTag] = set()
+    for step in plan.steps:
+        if not step.is_core:
+            continue
+        if step.mission_tag in seen:
+            continue
+        ordered.append(step.mission_tag)
+        seen.add(step.mission_tag)
+    if not ordered:
+        raise RuntimeError("MissionGateNode: coach_plan has no core mission steps")
+    return tuple(ordered)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Optional
 
 from langchain_core.callbacks.manager import adispatch_custom_event
@@ -52,15 +53,19 @@ class ChecklistUpdaterNode:
             raise RuntimeError("ChecklistUpdaterNode: missing coach_plan in state")
 
         plan = CoachPlan.model_validate(state.coach_plan)
-        evidence_summary = _collect_recent_tool_evidence(state.messages)
+        evidence_snapshot = _collect_recent_tool_evidence(state.messages)
         user_text = _last_human_message_text(state.messages)
         decision = await self._decide_with_retry(
             plan=plan,
             user_text=user_text,
-            evidence_summary=evidence_summary,
+            evidence_summary=evidence_snapshot.summary,
             config=config,
         )
         updates = _build_validated_updates(plan=plan, items=decision.updates)
+        updates = _normalize_update_observations(
+            updates=updates,
+            evidence_markers=evidence_snapshot.markers,
+        )
         next_plan = plan.apply_updates(updates, phase="tool_iteration")
         public_plan = next_plan.to_public_payload()
         payload = {
@@ -132,6 +137,9 @@ def _updater_system_prompt(*, feedback: str | None) -> str:
         "- Do not invent step ids.\n"
         "- Do not repeat all steps; update only steps that changed.\n"
         "- Keep observations concise and evidence-based.\n"
+        "- Never invent ability names or mechanics not present in tool_evidence.\n"
+        "- If evidence is weak/missing, keep status pending or blocked.\n"
+        "- Observation format must be one line and marker-based (no tactical detail).\n"
         "- Observations must be <= 140 chars."
     )
 
@@ -170,8 +178,9 @@ def _last_human_message_text(messages: list[BaseMessage]) -> str:
     return ""
 
 
-def _collect_recent_tool_evidence(messages: list[BaseMessage]) -> str:
+def _collect_recent_tool_evidence(messages: list[BaseMessage]) -> ToolEvidenceSnapshot:
     rows: list[str] = []
+    markers: list[str] = []
     for message in reversed(messages):
         if not isinstance(message, ToolMessage):
             continue
@@ -190,11 +199,81 @@ def _collect_recent_tool_evidence(messages: list[BaseMessage]) -> str:
         if isinstance(parsed, dict):
             citations = parsed.get("citations")
             evidence = parsed.get("evidence")
+            citation_markers = []
+            if isinstance(citations, list):
+                for item in citations[:4]:
+                    if not isinstance(item, dict):
+                        continue
+                    marker = str(item.get("citation_id") or "").strip()
+                    if marker:
+                        citation_markers.append(marker)
+            if citation_markers:
+                markers.extend(citation_markers)
             rows.append(
                 f"tool={tool_name} citations={len(citations) if isinstance(citations, list) else 0} "
                 f"evidence={len(evidence) if isinstance(evidence, list) else 0}"
             )
+            if isinstance(evidence, list):
+                for item in evidence[:2]:
+                    if not isinstance(item, dict):
+                        continue
+                    marker = str(item.get("marker") or "").strip()
+                    source_id = str(item.get("source_id") or "").strip()
+                    text = str(item.get("text") or "").strip()
+                    if marker:
+                        markers.append(marker)
+                    if text:
+                        rows.append(f"{marker}|{source_id}|{text[:120]}")
         if len(rows) >= 4:
             break
 
-    return "\n".join(rows)
+    deduped_markers = _dedupe_preserve_order(markers)[:6]
+    return ToolEvidenceSnapshot(summary="\n".join(rows), markers=deduped_markers)
+
+
+@dataclass(frozen=True)
+class ToolEvidenceSnapshot:
+    summary: str
+    markers: list[str]
+
+
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        normalized = str(item or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        result.append(normalized)
+        seen.add(normalized)
+    return result
+
+
+def _normalize_update_observations(
+    *,
+    updates: list[CoachPlanStepUpdate],
+    evidence_markers: list[str],
+) -> list[CoachPlanStepUpdate]:
+    if not updates:
+        return updates
+
+    marker_preview = ", ".join(evidence_markers[:3])
+    normalized: list[CoachPlanStepUpdate] = []
+    for update in updates:
+        if update.status == CoachPlanStatus.PENDING:
+            observation = None
+        elif update.status == CoachPlanStatus.BLOCKED:
+            observation = "Missing guide evidence for this step."
+        elif marker_preview:
+            observation = f"Evidence markers: {marker_preview}"
+        else:
+            observation = "No guide markers captured yet."
+
+        normalized.append(
+            CoachPlanStepUpdate(
+                id=update.id,
+                status=update.status,
+                observations=observation,
+            )
+        )
+    return normalized

@@ -65,6 +65,39 @@ class _PlannerModel:
         return _Runner()
 
 
+class _PlannerModelFailsFirstValidation:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def with_structured_output(self, schema):
+        outer = self
+
+        class _Runner:
+            async def ainvoke(self, _messages, config=None):
+                outer.calls += 1
+                if outer.calls == 1:
+                    raise ValueError("description must be <= 90 chars")
+                return schema.model_validate(
+                    {
+                        "title": "Raid Opener Plan",
+                        "steps": [
+                            {
+                                "id": "core_opener",
+                                "description": "Map core opener priority for the selected build.",
+                                "mission_tag": "core_skills",
+                            },
+                            {
+                                "id": "tips_execution",
+                                "description": "Capture concise execution tips for first pull window.",
+                                "mission_tag": "tips_and_tricks",
+                            },
+                        ],
+                    }
+                )
+
+        return _Runner()
+
+
 @pytest.mark.asyncio
 async def test_coach_plan_node_emits_plan_init(monkeypatch) -> None:
     emitted: list[tuple[str, dict]] = []
@@ -87,6 +120,29 @@ async def test_coach_plan_node_emits_plan_init(monkeypatch) -> None:
     assert update["coach_plan"]["plan_id"].startswith("coach-plan-")
     assert "mission_tag" in update["coach_plan"]["steps"][0]
     assert "mission_tag" not in emitted[0][1]["steps"][0]
+
+
+@pytest.mark.asyncio
+async def test_coach_plan_node_retries_when_structured_output_fails(monkeypatch) -> None:
+    emitted: list[tuple[str, dict]] = []
+
+    async def _fake_dispatch(name: str, payload: dict, config=None) -> None:
+        emitted.append((name, payload))
+
+    monkeypatch.setattr(
+        "app.application.agent.nodes.coach_plan_node.adispatch_custom_event",
+        _fake_dispatch,
+    )
+
+    planner = _PlannerModelFailsFirstValidation()
+    node = CoachPlanNode(classifier_model=planner)
+    state = _build_state(route="coach")
+    state.messages = [HumanMessage(content="how do i opener this raid build?")]
+    update = await node(state)
+
+    assert planner.calls == 2
+    assert emitted and emitted[0][0] == "plan_init"
+    assert update["coach_plan"]["plan_id"].startswith("coach-plan-")
 
 
 class _ChecklistModel:

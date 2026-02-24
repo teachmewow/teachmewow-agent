@@ -156,15 +156,9 @@ class CoachPlan(BaseModel):
                 raise ValueError(f"duplicate coach plan step id: {step.id}")
             seen_ids.add(step.id)
 
-        available_core_tags = {step.mission_tag for step in self.steps}
-        missing_core = [
-            tag.value for tag in CORE_MISSION_TAGS if tag not in available_core_tags
-        ]
-        if missing_core:
-            raise ValueError(
-                "coach plan must cover all core missions: "
-                + ", ".join(sorted(missing_core))
-            )
+        has_core_step = any(step.mission_tag in CORE_MISSION_TAGS for step in self.steps)
+        if not has_core_step:
+            raise ValueError("coach plan must include at least one core mission step")
 
         return self
 
