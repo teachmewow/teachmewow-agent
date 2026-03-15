@@ -90,32 +90,24 @@ LIST_BUILDS_SCHEMA: dict = {
     "type": "function",
     "name": "list_builds",
     "description": (
-        "List available WoW builds for the user's class/spec. "
-        "Call with NO filters to get ALL builds at once. "
-        "Only add filters if the user explicitly asked for a specific subset."
+        "Returns ALL builds for the user's class/spec in a single call. "
+        "Call with an empty object {} to get everything. "
+        "Optional filters narrow results only when the user explicitly asks."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "environment": {
                 "type": "string",
-                "enum": ["raid", "mythic_plus", "delves"],
-                "description": "Filter by game content type",
+                "description": "Optional: raid, mythic_plus, or delves",
             },
             "mode": {
                 "type": "string",
-                "enum": ["single", "aoe"],
-                "description": "Filter by single-target or AoE",
+                "description": "Optional: single or aoe",
             },
             "hero_talent": {
                 "type": "string",
-                "enum": ["slayer", "colossus"],
-                "description": "Filter by hero talent path",
-            },
-            "limit": {
-                "type": "integer",
-                "description": "Max results to return (default 10)",
-                "default": 10,
+                "description": "Optional: e.g. slayer, colossus",
             },
         },
         "additionalProperties": False,
