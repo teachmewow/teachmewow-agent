@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 
     # Upload skills to OpenAI
     print("Uploading skills...")
-    skill_metas = await upload_all_skills(provider.client, SKILLS_ROOT)
+    skill_metas = await upload_all_skills(settings.openai_api_key, SKILLS_ROOT)
     skill_refs = [
         {"type": "skill_reference", "skill_id": m["skill_id"]}
         for m in skill_metas

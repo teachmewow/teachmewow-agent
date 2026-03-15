@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 
+from langsmith import traceable
 from sqlalchemy import select
 
 from app.infrastructure.database.connection import get_session
@@ -30,6 +31,7 @@ def _normalize_char(char_info: object | None) -> tuple[str, str, str]:
     return ("", "", "")
 
 
+@traceable(run_type="tool", name="list_builds")
 async def execute_list_builds(
     environment: str | None = None,
     mode: str | None = None,

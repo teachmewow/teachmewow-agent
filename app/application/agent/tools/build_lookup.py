@@ -10,12 +10,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from langsmith import traceable
 from sqlalchemy import select
 
 from app.infrastructure.database.connection import get_session
 from app.infrastructure.database.models import BuildModel
 
 
+@traceable(run_type="tool", name="build_lookup")
 async def execute_build_lookup(
     build_id: str,
     char_info: object | None = None,

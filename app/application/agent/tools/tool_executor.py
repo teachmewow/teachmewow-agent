@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from langsmith import traceable
+
 
 class ToolExecutor:
     """
@@ -26,6 +28,7 @@ class ToolExecutor:
         self._char_info = char_info
         self._build_info = build_info
 
+    @traceable(run_type="tool", name="tool_dispatch")
     async def execute(self, tool_name: str, arguments: dict[str, Any]) -> str:
         """Route a function call to its handler and return the result string."""
         if tool_name == "list_builds":

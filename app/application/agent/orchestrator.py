@@ -15,6 +15,8 @@ import traceback
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from langsmith import traceable
+
 from app.infrastructure.llm.provider import LLMProvider
 
 from .tools.tool_executor import ToolExecutor
@@ -41,6 +43,11 @@ class Orchestrator:
         self._model = model
         self._tools_config = tools_config
 
+    @traceable(
+        run_type="chain",
+        name="orchestrator",
+        reduce_fn=lambda chunks: {"sse_events": len(chunks)},
+    )
     async def stream(
         self,
         *,

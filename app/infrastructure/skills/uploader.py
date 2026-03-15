@@ -1,9 +1,8 @@
 """
-Skill uploader — uploads SKILL.md bundles to OpenAI and returns skill_ids.
+Skill uploader — uploads SKILL.md bundles to OpenAI via REST API.
 
-On startup, each skill directory under ``skills/`` is zipped and uploaded
-via ``POST /v1/skills``.  The returned ``skill_id`` is stored for use
-in ``responses.create`` calls.
+The Skills API (POST /v1/skills) is not yet in the Python SDK,
+so we use httpx directly for the multipart upload.
 """
 
 from __future__ import annotations
@@ -13,21 +12,17 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from openai import AsyncOpenAI
+import httpx
+
+SKILLS_API_URL = "https://api.openai.com/v1/skills"
 
 
-async def upload_skill(client: AsyncOpenAI, skill_dir: Path) -> dict[str, Any]:
+async def upload_skill(api_key: str, skill_dir: Path) -> dict[str, Any]:
     """
     Upload a skill directory to OpenAI.
 
-    Args:
-        client: AsyncOpenAI client instance.
-        skill_dir: Path to the skill directory containing SKILL.md.
-
-    Returns:
-        dict with ``skill_id``, ``name``, ``version`` from the API response.
+    Zips the directory contents and sends via POST /v1/skills.
     """
-    # Build in-memory zip of the skill directory
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for file_path in sorted(skill_dir.rglob("*")):
@@ -36,27 +31,30 @@ async def upload_skill(client: AsyncOpenAI, skill_dir: Path) -> dict[str, Any]:
                 zf.write(file_path, arcname)
     buf.seek(0)
 
-    response = await client.skills.create(
-        files=buf,
-    )
+    async with httpx.AsyncClient(timeout=30) as http:
+        resp = await http.post(
+            SKILLS_API_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            files={"files": (f"{skill_dir.name}.zip", buf, "application/zip")},
+        )
+        resp.raise_for_status()
 
-    skill_id = response.id
-    name = getattr(response, "name", skill_dir.name)
-    version = getattr(response, "default_version", 1)
+    data = resp.json()
+    skill_id = data.get("id", "")
+    name = data.get("name", skill_dir.name)
+    version = data.get("default_version", 1)
 
     print(f"  Uploaded skill '{name}' -> {skill_id} (v{version})")
     return {"skill_id": skill_id, "name": name, "version": version}
 
 
 async def upload_all_skills(
-    client: AsyncOpenAI,
+    api_key: str,
     skills_root: Path,
 ) -> list[dict[str, Any]]:
     """
     Upload all skill directories under ``skills_root``.
-
-    Each subdirectory must contain a ``SKILL.md`` file.
-    Returns list of skill metadata dicts.
+    Each subdirectory must contain a SKILL.md file.
     """
     results: list[dict[str, Any]] = []
     for skill_dir in sorted(skills_root.iterdir()):
@@ -66,6 +64,11 @@ async def upload_all_skills(
         if not skill_md.exists():
             print(f"  Skipping {skill_dir.name}/ (no SKILL.md)")
             continue
-        meta = await upload_skill(client, skill_dir)
-        results.append(meta)
+        try:
+            meta = await upload_skill(api_key, skill_dir)
+            results.append(meta)
+        except httpx.HTTPStatusError as e:
+            print(f"  Failed to upload {skill_dir.name}: {e.response.status_code} {e.response.text[:200]}")
+        except Exception as e:
+            print(f"  Failed to upload {skill_dir.name}: {e}")
     return results
