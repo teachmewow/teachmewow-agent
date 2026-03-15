@@ -1,7 +1,7 @@
 """
 LLM provider abstraction.
 
-Wraps the OpenAI Responses API with LangSmith tracing via ``wrap_openai``.
+Wraps the OpenAI Responses API with optional LangSmith tracing via ``wrap_openai``.
 """
 
 from __future__ import annotations
@@ -11,6 +11,13 @@ from typing import Any, Protocol, runtime_checkable
 from openai import AsyncOpenAI
 
 from app.infrastructure.config import get_settings
+
+try:
+    from langsmith.wrappers import wrap_openai
+
+    _HAS_LANGSMITH = True
+except ImportError:
+    _HAS_LANGSMITH = False
 
 # ---------------------------------------------------------------------------
 # Protocol
@@ -30,6 +37,7 @@ class LLMProvider(Protocol):
         input: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         stream: bool = True,
+        reasoning_effort: str | None = None,
     ) -> Any: ...
 
 
@@ -42,17 +50,13 @@ class OpenAIProvider:
 
     def __init__(self, api_key: str, *, enable_tracing: bool = True) -> None:
         raw_client = AsyncOpenAI(api_key=api_key)
-
-        if enable_tracing:
-            try:
-                from langsmith.wrappers import wrap_openai
-                self._client = wrap_openai(raw_client)
-                print("LangSmith tracing enabled for OpenAI client")
-            except ImportError:
-                self._client = raw_client
-                print("LangSmith not installed — tracing disabled")
+        if enable_tracing and _HAS_LANGSMITH:
+            self._client = wrap_openai(raw_client)
+            print("LangSmith tracing enabled for OpenAI client")
         else:
             self._client = raw_client
+            if enable_tracing and not _HAS_LANGSMITH:
+                print("LangSmith not installed — tracing disabled")
 
     @property
     def client(self) -> AsyncOpenAI:

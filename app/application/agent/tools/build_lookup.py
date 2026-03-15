@@ -16,6 +16,9 @@ from sqlalchemy import select
 from app.infrastructure.database.connection import get_session
 from app.infrastructure.database.models import BuildModel
 
+from ._char_utils import normalize_char_dict
+from .registry import ToolContext
+
 
 @traceable(run_type="tool", name="build_lookup")
 async def execute_build_lookup(
@@ -23,8 +26,8 @@ async def execute_build_lookup(
     char_info: object | None = None,
 ) -> str:
     """Pure function — no LangChain / Helix dependency."""
-    normalized_char_info = _normalize_char(char_info)
-    if not normalized_char_info:
+    normalized_char_info = normalize_char_dict(char_info)
+    if not normalized_char_info.get("class"):
         return json.dumps({"tool": "build_lookup", "error": "Missing character info."})
 
     resolved = await _fetch_build(
@@ -70,6 +73,40 @@ async def execute_build_lookup(
     )
 
 
+# -- Handler class for ToolRegistry ----------------------------------------
+
+class BuildLookupHandler:
+    name = "build_lookup"
+    schema: dict[str, Any] = {
+        "type": "function",
+        "name": "build_lookup",
+        "description": (
+            "Get full details of a specific WoW build by its ID, "
+            "including talent tree, import code, and metadata."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "build_id": {
+                    "type": "string",
+                    "description": "The build identifier to look up",
+                },
+            },
+            "required": ["build_id"],
+            "additionalProperties": False,
+        },
+    }
+
+    async def execute(self, args: dict[str, Any], ctx: ToolContext) -> str:
+        return await execute_build_lookup(
+            build_id=args.get("build_id", ""),
+            char_info=ctx.char_info,
+        )
+
+
+BUILD_LOOKUP_SCHEMA = BuildLookupHandler.schema
+
+
 # -- Also expose the view function for the builds route -------------------
 
 async def fetch_build_view_by_id(
@@ -110,22 +147,6 @@ async def fetch_build_view_by_id(
 
 
 # -- internals ------------------------------------------------------------
-
-def _normalize_char(char_info: object | None) -> dict[str, str]:
-    if isinstance(char_info, dict):
-        return {
-            "class": str(char_info.get("class", "")).strip().lower(),
-            "spec": str(char_info.get("spec", "")).strip().lower(),
-            "role": str(char_info.get("role", "")).strip().lower(),
-        }
-    if char_info is not None:
-        return {
-            "class": str(getattr(char_info, "wow_class", "")).strip().lower(),
-            "spec": str(getattr(char_info, "spec", "")).strip().lower(),
-            "role": str(getattr(char_info, "role", "")).strip().lower(),
-        }
-    return {}
-
 
 async def _fetch_build(build_id: str, char_info: dict[str, str]) -> dict[str, Any] | None:
     normalized_class = char_info.get("class", "").strip().lower()
@@ -210,26 +231,3 @@ def _normalize_tree_payload(tree_payload: object, fallback_tree_id: str | None) 
             }]
         }
     return None
-
-
-# -- OpenAI function-tool JSON schema -------------------------------------
-
-BUILD_LOOKUP_SCHEMA: dict = {
-    "type": "function",
-    "name": "build_lookup",
-    "description": (
-        "Get full details of a specific WoW build by its ID, "
-        "including talent tree, import code, and metadata."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "build_id": {
-                "type": "string",
-                "description": "The build identifier to look up",
-            },
-        },
-        "required": ["build_id"],
-        "additionalProperties": False,
-    },
-}

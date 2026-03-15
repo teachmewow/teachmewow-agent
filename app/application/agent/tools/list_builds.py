@@ -7,6 +7,7 @@ Lists available build IDs for character context and optional filters.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from langsmith import traceable
 from sqlalchemy import select
@@ -14,21 +15,8 @@ from sqlalchemy import select
 from app.infrastructure.database.connection import get_session
 from app.infrastructure.database.models import BuildModel
 
-
-def _normalize_char(char_info: object | None) -> tuple[str, str, str]:
-    if isinstance(char_info, dict):
-        return (
-            str(char_info.get("class", "")).strip().lower(),
-            str(char_info.get("spec", "")).strip().lower(),
-            str(char_info.get("role", "")).strip().lower(),
-        )
-    if char_info is not None:
-        return (
-            str(getattr(char_info, "wow_class", "")).strip().lower(),
-            str(getattr(char_info, "spec", "")).strip().lower(),
-            str(getattr(char_info, "role", "")).strip().lower(),
-        )
-    return ("", "", "")
+from ._char_utils import normalize_char
+from .registry import ToolContext
 
 
 @traceable(run_type="tool", name="list_builds")
@@ -40,7 +28,7 @@ async def execute_list_builds(
     char_info: object | None = None,
 ) -> str:
     """Pure function — no LangChain dependency."""
-    normalized_class, normalized_spec, normalized_role = _normalize_char(char_info)
+    normalized_class, normalized_spec, normalized_role = normalize_char(char_info)
     if not normalized_class or not normalized_spec or not normalized_role:
         return json.dumps({"tool": "list_builds", "count": 0, "builds": []})
 
@@ -84,32 +72,46 @@ async def execute_list_builds(
     return json.dumps(payload, ensure_ascii=True)
 
 
-# -- OpenAI function-tool JSON schema ------------------------------------
+# -- Handler class for ToolRegistry ----------------------------------------
 
-LIST_BUILDS_SCHEMA: dict = {
-    "type": "function",
-    "name": "list_builds",
-    "description": (
-        "Returns ALL builds for the user's class/spec in a single call. "
-        "Call with an empty object {} to get everything. "
-        "Optional filters narrow results only when the user explicitly asks."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "environment": {
-                "type": "string",
-                "description": "Optional: raid, mythic_plus, or delves",
+class ListBuildsHandler:
+    name = "list_builds"
+    schema: dict[str, Any] = {
+        "type": "function",
+        "name": "list_builds",
+        "description": (
+            "Returns ALL builds for the user's class/spec in a single call. "
+            "Call with an empty object {} to get everything. "
+            "Optional filters narrow results only when the user explicitly asks."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "environment": {
+                    "type": "string",
+                    "description": "Optional: raid, mythic_plus, or delves",
+                },
+                "mode": {
+                    "type": "string",
+                    "description": "Optional: single or aoe",
+                },
+                "hero_talent": {
+                    "type": "string",
+                    "description": "Optional: e.g. slayer, colossus",
+                },
             },
-            "mode": {
-                "type": "string",
-                "description": "Optional: single or aoe",
-            },
-            "hero_talent": {
-                "type": "string",
-                "description": "Optional: e.g. slayer, colossus",
-            },
+            "additionalProperties": False,
         },
-        "additionalProperties": False,
-    },
-}
+    }
+
+    async def execute(self, args: dict[str, Any], ctx: ToolContext) -> str:
+        return await execute_list_builds(
+            environment=args.get("environment"),
+            mode=args.get("mode"),
+            hero_talent=args.get("hero_talent"),
+            limit=args.get("limit", 10),
+            char_info=ctx.char_info,
+        )
+
+
+LIST_BUILDS_SCHEMA = ListBuildsHandler.schema

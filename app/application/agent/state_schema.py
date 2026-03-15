@@ -12,8 +12,7 @@ class CharInfo(BaseModel):
     spec: str
     role: str
 
-    class Config:
-        populate_by_name = True
+    model_config = {"populate_by_name": True}
 
 
 class BuildInfo(BaseModel):

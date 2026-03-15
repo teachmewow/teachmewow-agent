@@ -1,66 +1,35 @@
 """
-Tool executor — dispatches function-tool calls from the Responses API
-to the correct Python handler.
+Tool executor — dispatches function-tool calls via the ToolRegistry.
 """
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from langsmith import traceable
 
+from .registry import ToolContext, ToolRegistry
+
 
 class ToolExecutor:
     """
-    Maps function-tool names to handlers and executes them.
-
-    Each handler receives ``**kwargs`` parsed from the tool-call arguments
-    and returns a JSON string.
+    Dispatches function-tool calls through the ToolRegistry.
     """
 
     def __init__(
         self,
         *,
+        registry: ToolRegistry,
         char_info: dict | None = None,
         build_info: dict | None = None,
     ) -> None:
-        self._char_info = char_info
-        self._build_info = build_info
+        self._registry = registry
+        self._ctx = ToolContext(char_info=char_info, build_info=build_info)
 
     @traceable(run_type="tool", name="tool_dispatch")
     async def execute(self, tool_name: str, arguments: dict[str, Any]) -> str:
         """Route a function call to its handler and return the result string."""
-        if tool_name == "list_builds":
-            return await self._exec_list_builds(arguments)
-
-        if tool_name == "build_lookup":
-            return await self._exec_build_lookup(arguments)
-
-        return json.dumps({"error": f"Unknown tool: {tool_name}"})
-
-    # -- delegates --------------------------------------------------------
-
-    async def _exec_list_builds(self, args: dict) -> str:
-        from app.application.agent.tools.list_builds import execute_list_builds
-
-        return await execute_list_builds(
-            environment=args.get("environment"),
-            mode=args.get("mode"),
-            hero_talent=args.get("hero_talent"),
-            limit=args.get("limit", 10),
-            char_info=self._char_info,
-        )
-
-    async def _exec_build_lookup(self, args: dict) -> str:
-        from app.application.agent.tools.build_lookup import execute_build_lookup
-
-        return await execute_build_lookup(
-            build_id=args.get("build_id", ""),
-            char_info=self._char_info,
-        )
-
-    # -- context update ---------------------------------------------------
+        return await self._registry.execute(tool_name, arguments, self._ctx)
 
     def update_context(
         self,
@@ -69,6 +38,6 @@ class ToolExecutor:
         build_info: dict | None = None,
     ) -> None:
         if char_info is not None:
-            self._char_info = char_info
+            self._ctx.char_info = char_info
         if build_info is not None:
-            self._build_info = build_info
+            self._ctx.build_info = build_info
