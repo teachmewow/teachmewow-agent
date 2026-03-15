@@ -90,8 +90,9 @@ LIST_BUILDS_SCHEMA: dict = {
     "type": "function",
     "name": "list_builds",
     "description": (
-        "List available WoW builds for the user's class/spec, "
-        "optionally filtered by environment, mode, and hero talent."
+        "List available WoW builds for the user's class/spec. "
+        "Call with NO filters to get ALL builds at once. "
+        "Only add filters if the user explicitly asked for a specific subset."
     ),
     "parameters": {
         "type": "object",

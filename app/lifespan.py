@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
         provider=provider,
         model=settings.openai_main_model,
         tools_config=tools_config,
-        skill_registry=None,  # Skills are now on OpenAI's side
+        reasoning_effort=settings.openai_reasoning_effort,
     )
 
     # Store in app state

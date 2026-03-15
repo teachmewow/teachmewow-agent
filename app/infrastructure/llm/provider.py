@@ -65,13 +65,17 @@ class OpenAIProvider:
         input: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         stream: bool = True,
+        reasoning_effort: str | None = None,
     ) -> Any:
-        return await self._client.responses.create(
-            model=model,
-            input=input,
-            tools=tools,
-            stream=stream,
-        )
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "input": input,
+            "tools": tools,
+            "stream": stream,
+        }
+        if reasoning_effort and reasoning_effort != "none":
+            kwargs["reasoning"] = {"effort": reasoning_effort}
+        return await self._client.responses.create(**kwargs)
 
     @classmethod
     def from_settings(cls) -> OpenAIProvider:

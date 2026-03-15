@@ -37,11 +37,13 @@ class Orchestrator:
         provider: LLMProvider,
         model: str,
         tools_config: list[dict[str, Any]],
+        reasoning_effort: str = "none",
         skill_registry: Any = None,  # kept for compat, unused
     ) -> None:
         self._provider = provider
         self._model = model
         self._tools_config = tools_config
+        self._reasoning_effort = reasoning_effort
 
     @traceable(
         run_type="chain",
@@ -87,6 +89,7 @@ class Orchestrator:
                     input=input_messages,
                     tools=self._tools_config,
                     stream=True,
+                    reasoning_effort=self._reasoning_effort,
                 )
 
                 async for event in response:
