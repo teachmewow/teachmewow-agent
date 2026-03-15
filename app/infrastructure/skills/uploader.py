@@ -62,6 +62,8 @@ async def upload_skill(api_key: str, skill_dir: Path) -> dict[str, Any]:
         "name": name,
         "description": description,
         "version": version,
+        "dir_name": skill_dir.name,
+        "path": str(skill_dir),
     }
 
 
