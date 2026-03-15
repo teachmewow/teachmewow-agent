@@ -17,16 +17,26 @@ build_lookup_skill = SkillDefinition(
 # Build Lookup Skill
 
 ## Workflow
-1. Use `list_builds` with any filters the user mentioned (environment, hero_talent, mode).
-   If the user didn't specify filters, list all available builds.
-2. Present results clearly: build ID, hero talent, environment, mode, patch, source.
-3. If the user picks a build or wants details, use `build_lookup(build_id)` to get
-   the full talent tree and import code.
-4. After showing a build, ask if they want coaching on it (rotation, tips, etc.).
+1. **Disambiguate first.** If the user's request is vague (e.g. "show me builds",
+   "what builds do you have"), ask a short disambiguation question BEFORE calling
+   any tool. Examples:
+   - "Quer ver todas as builds disponíveis, ou tem preferência? Raid, Mythic+ ou Delves? ST ou AoE?"
+   - "Slayer ou Colossus? Ou quer ver as duas?"
+   Do NOT call list_builds yet — just ask.
 
-## Response format
-- Use clear formatting (bullet points or a small table) for build lists.
-- When showing a single build, highlight the hero talent path and import code.
-- Tell the user to check the talent tree viewer for the visual tree.
+2. **If the user is specific** (e.g. "raid builds", "slayer m+", "all builds"),
+   call `list_builds` ONCE with the appropriate filters (or no filters for "all").
+   NEVER call list_builds multiple times with different filter combinations.
+
+3. Present results grouped by environment. Show: hero talent, mode, patch.
+
+4. If the user picks a build, use `build_lookup(build_id)` for full details.
+
+5. After showing a build, ask if they want coaching on it.
+
+## Important
+- ALWAYS prefer asking over guessing when the request is ambiguous.
+- ONE call to list_builds is enough — no filters returns everything.
+- Do NOT iterate over filter combinations.
 """,
 )
