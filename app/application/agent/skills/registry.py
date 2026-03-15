@@ -28,19 +28,7 @@ class SkillRegistry:
         return list(self._skills.keys())
 
     def catalog_for_system_prompt(self) -> str:
-        """
-        Return a formatted skill catalog suitable for injection into
-        the orchestrator's system prompt.
-
-        Example output::
-
-            Available skills:
-            - build_lookup: Find, list, and show WoW builds
-              Use when: user asks about builds, talents, import codes
-              Don't use when: coaching questions, rotation, general chat
-            - build_coaching: Coach on rotation, priorities, cooldowns
-              ...
-        """
+        """Short catalog listing skill names and descriptions."""
         if not self._skills:
             return "No skills available."
 
@@ -50,3 +38,24 @@ class SkillRegistry:
             lines.append(f"  Use when: {skill.when_to_use}")
             lines.append(f"  Don't use when: {skill.when_not_to_use}")
         return "\n".join(lines)
+
+    def instructions_for_system_prompt(self) -> str:
+        """
+        Return full skill instructions for injection into the system prompt.
+
+        Each skill's complete workflow is included so the model can follow
+        the right one based on user intent — no tool call needed.
+        """
+        if not self._skills:
+            return ""
+
+        sections: list[str] = []
+        for skill in self._skills.values():
+            section = (
+                f"## Skill: {skill.name}\n"
+                f"**Use when:** {skill.when_to_use}\n"
+                f"**Don't use when:** {skill.when_not_to_use}\n\n"
+                f"{skill.instructions}"
+            )
+            sections.append(section)
+        return "\n\n---\n\n".join(sections)

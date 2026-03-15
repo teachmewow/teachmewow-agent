@@ -8,10 +8,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.application.agent.skills import SkillRegistry
-
-from .load_skill import load_skill
-
 
 class ToolExecutor:
     """
@@ -24,24 +20,14 @@ class ToolExecutor:
     def __init__(
         self,
         *,
-        skill_registry: SkillRegistry,
         char_info: dict | None = None,
         build_info: dict | None = None,
     ) -> None:
-        self._skill_registry = skill_registry
         self._char_info = char_info
         self._build_info = build_info
 
     async def execute(self, tool_name: str, arguments: dict[str, Any]) -> str:
         """Route a function call to its handler and return the result string."""
-        if tool_name == "load_skill":
-            return load_skill(
-                skill_name=arguments.get("skill_name", ""),
-                registry=self._skill_registry,
-                char_info=self._char_info,
-                build_info=self._build_info,
-            )
-
         if tool_name == "list_builds":
             return await self._exec_list_builds(arguments)
 

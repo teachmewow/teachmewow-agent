@@ -12,7 +12,6 @@ from app.application.agent.skills.build_coaching import build_coaching_skill
 from app.application.agent.skills.build_lookup import build_lookup_skill
 from app.application.agent.tools.build_lookup import BUILD_LOOKUP_SCHEMA
 from app.application.agent.tools.list_builds import LIST_BUILDS_SCHEMA
-from app.application.agent.tools.load_skill import LOAD_SKILL_SCHEMA
 from app.infrastructure import close_database, init_database
 from app.infrastructure.config import get_settings
 from app.infrastructure.llm.provider import OpenAIProvider
@@ -45,7 +44,6 @@ async def lifespan(app: FastAPI):
             "user_location": {"type": "approximate", "country": "US"},
         },
         # Our function tools
-        LOAD_SKILL_SCHEMA,
         LIST_BUILDS_SCHEMA,
         BUILD_LOOKUP_SCHEMA,
     ]

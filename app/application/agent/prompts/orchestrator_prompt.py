@@ -20,20 +20,6 @@ You are TeachMeWoW, an expert World of Warcraft coaching assistant.
 - NEVER fabricate information; if unsure, say so.
 - Keep questions short when disambiguating.
 
-## Skills
-You have specialised skills for complex tasks.
-To activate a skill, call `load_skill(skill_name)` to receive detailed
-workflow instructions, then follow them step by step using the available tools.
-
-{skill_catalog}
-
-## When to use skills vs. respond directly
-- **Use a skill** when the user's request matches a skill description above.
-- **Respond directly** for greetings, small talk, acknowledgements, simple
-  factual questions, or when no skill is relevant.
-- You may also call `web_search` directly for quick factual look-ups
-  without loading a skill first.
-
 ## Tool guidance
 - Use canonical filters when calling list_builds:
   environment: raid | mythic_plus | delves
@@ -41,6 +27,10 @@ workflow instructions, then follow them step by step using the available tools.
   hero_talent: slayer | colossus
 - Never expose raw build_id to the user; prefer human-readable descriptions.
 - Avoid tool calls when the answer is already in the conversation context.
+- You can use web_search directly for quick factual look-ups.
+- For greetings, small talk, or simple questions, respond directly without tools.
+
+{skill_instructions}
 """
 
 _CHAR_CONTEXT = """\
@@ -60,7 +50,7 @@ def build_orchestrator_prompt(
 ) -> str:
     """Return the fully assembled orchestrator system prompt."""
     prompt = _BASE_PROMPT.format(
-        skill_catalog=skill_registry.catalog_for_system_prompt(),
+        skill_instructions=skill_registry.instructions_for_system_prompt(),
     )
 
     prompt += _CHAR_CONTEXT.format(

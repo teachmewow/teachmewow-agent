@@ -3,7 +3,7 @@ Orchestrator — drives the agent loop using the OpenAI Responses API.
 
 Replaces the entire LangGraph pipeline with a simple tool-call loop:
 
-    orchestrator ←→ tools → done
+    orchestrator <-> tools -> done
 
 Yields SSE-formatted events for the FastAPI streaming response.
 """
@@ -50,26 +50,18 @@ class Orchestrator:
     ) -> AsyncGenerator[str, None]:
         """
         Run the orchestrator loop, yielding SSE event strings.
-
-        The loop:
-        1. Send conversation + system prompt to the Responses API.
-        2. Stream tokens to the client.
-        3. If the response contains function calls, execute them and loop.
-        4. If no function calls, emit annotations + done and exit.
         """
         tool_executor = ToolExecutor(
-            skill_registry=self._skill_registry,
             char_info=char_info,
             build_info=build_info,
         )
 
-        # Build the input array for the Responses API
         input_messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
             *messages,
         ]
 
-        max_iterations = 15  # safety limit
+        max_iterations = 15
         iteration = 0
 
         try:
@@ -78,7 +70,9 @@ class Orchestrator:
 
                 accumulated_text = ""
                 output_items: list[dict] = []
-                current_fn_calls: dict[str, dict] = {}  # call_id -> {name, args_buffer}
+
+                # Track streaming fn calls: item_id -> {name, args_buffer}
+                streaming_fn_calls: dict[str, dict] = {}
 
                 response = await self._provider.create_response(
                     model=self._model,
@@ -88,68 +82,71 @@ class Orchestrator:
                 )
 
                 async for event in response:
-                    event_type = getattr(event, "type", "")
+                    etype = getattr(event, "type", "")
 
                     # -- text delta tokens --
-                    if event_type == "response.output_text.delta":
+                    if etype == "response.output_text.delta":
                         delta = getattr(event, "delta", "")
                         if delta:
                             accumulated_text += delta
                             yield _sse("token", {"text": delta})
 
                     # -- function call arguments streaming --
-                    elif event_type == "response.function_call_arguments.delta":
-                        call_id = getattr(event, "item_id", None)
+                    elif etype == "response.function_call_arguments.delta":
+                        item_id = getattr(event, "item_id", None)
                         delta = getattr(event, "delta", "")
-                        if call_id and call_id in current_fn_calls:
-                            current_fn_calls[call_id]["args_buffer"] += delta
+                        if item_id and item_id in streaming_fn_calls:
+                            streaming_fn_calls[item_id]["args"] += delta
 
-                    # -- output item added (function_call or message) --
-                    elif event_type == "response.output_item.added":
+                    # -- output item added (function_call start) --
+                    elif etype == "response.output_item.added":
                         item = getattr(event, "item", None)
                         if item and getattr(item, "type", "") == "function_call":
-                            call_id = getattr(item, "id", "") or getattr(item, "call_id", "")
+                            item_id = getattr(item, "id", "")
                             fn_name = getattr(item, "name", "")
-                            current_fn_calls[call_id] = {
+                            streaming_fn_calls[item_id] = {
                                 "name": fn_name,
-                                "args_buffer": "",
+                                "args": "",
                             }
-                            yield _sse("tool_call", {"name": fn_name, "call_id": call_id})
+                            yield _sse("tool_call", {
+                                "name": fn_name,
+                                "call_id": item_id,
+                            })
 
-                    # -- output item done --
-                    elif event_type == "response.output_item.done":
+                    # -- output item done (complete item with all fields) --
+                    elif etype == "response.output_item.done":
                         item = getattr(event, "item", None)
                         if item:
                             output_items.append(_item_to_dict(item))
 
                     # -- web search events --
-                    elif event_type == "response.web_search_call.in_progress":
+                    elif etype == "response.web_search_call.in_progress":
                         yield _sse("web_search", {"status": "searching"})
-                    elif event_type == "response.web_search_call.completed":
+                    elif etype == "response.web_search_call.completed":
                         yield _sse("web_search", {"status": "completed"})
 
                 # -- Finished streaming this response turn --
 
-                # Collect function calls from output_items
                 function_calls = [
                     item for item in output_items
                     if item.get("type") == "function_call"
                 ]
 
                 if not function_calls:
-                    # No function calls — final response.
-                    # Extract annotations from the output items.
                     annotations = _extract_annotations(output_items)
                     if annotations:
                         yield _sse("annotations", {"citations": annotations})
-                    yield _sse("done", {
-                        "text": accumulated_text,
-                    })
+                    yield _sse("done", {"text": accumulated_text})
                     return
 
-                # Execute function calls and add results to conversation
+                # Execute function calls.
+                # The Responses API uses `call_id` for function_call_output,
+                # but the SSE `tool_call` event used `id` (item_id).
+                # We need to map id -> call_id for the API, and use id
+                # consistently in SSE events.
                 for fc in function_calls:
-                    call_id = fc.get("call_id", fc.get("id", ""))
+                    item_id = fc.get("id", "")
+                    api_call_id = fc.get("call_id", item_id)
                     fn_name = fc.get("name", "")
                     args_raw = fc.get("arguments", "{}")
 
@@ -159,30 +156,31 @@ class Orchestrator:
                         args = {}
 
                     result = await tool_executor.execute(fn_name, args)
-
-                    # Check if build_lookup returned build_info — update context
                     _maybe_update_build_context(result, tool_executor)
 
+                    # SSE uses item_id (same as tool_call event)
                     yield _sse("tool_result", {
                         "name": fn_name,
-                        "call_id": call_id,
-                        "result": result[:500],  # truncated for SSE
+                        "call_id": item_id,
+                        "result": result[:500],
                     })
 
-                    # Append the function call + result to input for next turn
+                    # Responses API uses call_id for matching
                     input_messages.append({
                         "type": "function_call",
-                        "call_id": call_id,
+                        "call_id": api_call_id,
                         "name": fn_name,
-                        "arguments": args_raw if isinstance(args_raw, str) else json.dumps(args_raw),
+                        "arguments": (
+                            args_raw if isinstance(args_raw, str)
+                            else json.dumps(args_raw)
+                        ),
                     })
                     input_messages.append({
                         "type": "function_call_output",
-                        "call_id": call_id,
+                        "call_id": api_call_id,
                         "output": result,
                     })
 
-            # Exceeded max iterations
             yield _sse("error", {"message": "Max tool iterations reached."})
 
         except Exception as exc:
@@ -195,13 +193,11 @@ class Orchestrator:
 # ---------------------------------------------------------------------------
 
 def _sse(event: str, data: dict) -> str:
-    """Format a server-sent event string."""
     payload = json.dumps({"event": event, "data": data}, ensure_ascii=True)
     return f"data: {payload}\n\n"
 
 
 def _item_to_dict(item: Any) -> dict:
-    """Convert a Responses API output item to a plain dict."""
     if isinstance(item, dict):
         return item
     result: dict[str, Any] = {"type": getattr(item, "type", "unknown")}
@@ -209,13 +205,15 @@ def _item_to_dict(item: Any) -> dict:
         val = getattr(item, attr, None)
         if val is not None:
             result[attr] = val
-    # Handle nested content (message items)
     content = getattr(item, "content", None)
     if isinstance(content, list):
         result["content"] = []
         for c in content:
             if hasattr(c, "text"):
-                c_dict: dict[str, Any] = {"type": getattr(c, "type", "text"), "text": c.text}
+                c_dict: dict[str, Any] = {
+                    "type": getattr(c, "type", "text"),
+                    "text": c.text,
+                }
                 annotations = getattr(c, "annotations", None)
                 if annotations:
                     c_dict["annotations"] = [
@@ -233,13 +231,12 @@ def _item_to_dict(item: Any) -> dict:
 
 
 def _extract_annotations(output_items: list[dict]) -> list[dict]:
-    """Pull url_citation annotations from message output items."""
     annotations: list[dict] = []
     for item in output_items:
         if item.get("type") != "message":
             continue
-        for content_block in item.get("content", []):
-            for ann in content_block.get("annotations", []):
+        for block in item.get("content", []):
+            for ann in block.get("annotations", []):
                 if ann.get("type") == "url_citation":
                     annotations.append({
                         "start_index": ann.get("start_index"),
@@ -251,7 +248,6 @@ def _extract_annotations(output_items: list[dict]) -> list[dict]:
 
 
 def _maybe_update_build_context(result: str, executor: ToolExecutor) -> None:
-    """If a tool returned build_info, update the executor's context."""
     try:
         data = json.loads(result)
         bi = data.get("build_info")
