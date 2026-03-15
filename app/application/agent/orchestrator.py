@@ -25,10 +25,9 @@ from .tools.tool_executor import ToolExecutor
 class Orchestrator:
     """
     Stateless orchestrator — one instance is shared across requests.
-    Per-request state is passed via ``stream()``.
 
-    Skills are mounted on OpenAI's side (via shell tool + skill_reference).
-    The model discovers and follows them autonomously.
+    Skills are mounted on OpenAI's side via shell tool (local mode)
+    with skill_reference. The model discovers and follows them autonomously.
     """
 
     def __init__(
@@ -38,7 +37,6 @@ class Orchestrator:
         model: str,
         tools_config: list[dict[str, Any]],
         reasoning_effort: str = "none",
-        skill_registry: Any = None,  # kept for compat, unused
     ) -> None:
         self._provider = provider
         self._model = model
@@ -272,3 +270,5 @@ def _maybe_update_build_context(result: str, executor: ToolExecutor) -> None:
             executor.update_context(build_info=bi)
     except (json.JSONDecodeError, AttributeError):
         pass
+
+

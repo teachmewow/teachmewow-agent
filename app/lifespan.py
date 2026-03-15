@@ -41,26 +41,24 @@ async def lifespan(app: FastAPI):
 
     # Tool configuration for the Responses API
     tools_config = [
-        # Native web_search — domain-filtered
         {
             "type": "web_search",
             "search_context_size": "medium",
             "user_location": {"type": "approximate", "country": "US"},
         },
-        # Shell tool with mounted skills
+        # Shell tool with skills — local mode (no container overhead)
         {
             "type": "shell",
             "environment": {
-                "type": "container_auto",
+                "type": "local",
                 "skills": skill_refs,
             },
         },
-        # Our function tools
         LIST_BUILDS_SCHEMA,
         BUILD_LOOKUP_SCHEMA,
     ]
 
-    # Orchestrator (stateless singleton)
+    # Orchestrator
     orchestrator = Orchestrator(
         provider=provider,
         model=settings.openai_main_model,
