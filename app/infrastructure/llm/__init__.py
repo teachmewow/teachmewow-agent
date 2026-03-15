@@ -2,6 +2,6 @@
 LLM infrastructure module.
 """
 
-from .client import LLMClient
+from .provider import LLMProvider, OpenAIProvider
 
-__all__ = ["LLMClient"]
+__all__ = ["LLMProvider", "OpenAIProvider"]

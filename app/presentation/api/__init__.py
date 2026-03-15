@@ -2,7 +2,7 @@
 API module.
 """
 
-from .dependencies import ChatServiceDep, DBSession, Graph, ThreadServiceDep
+from .dependencies import ChatServiceDep, DBSession, ThreadServiceDep
 from .routes import builds_router, chat_router, threads_router
 
 __all__ = [
@@ -12,5 +12,4 @@ __all__ = [
     "ChatServiceDep",
     "ThreadServiceDep",
     "DBSession",
-    "Graph",
 ]

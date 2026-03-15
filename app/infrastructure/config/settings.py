@@ -40,13 +40,6 @@ class Settings(BaseSettings):
     openai_explorer_reasoning_effort: str = "medium"
     openai_explorer_reasoning_summary: str = "auto"
 
-    # HelixDB
-    helix_local: bool = True
-    helix_port: int = 6969
-    helix_api_endpoint: str = ""
-    helix_api_key: str = ""
-    helix_verbose: bool = False
-
     # App
     app_env: str = "development"
     debug: bool = True

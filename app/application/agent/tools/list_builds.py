@@ -7,41 +7,40 @@ Lists available build IDs for character context and optional filters.
 from __future__ import annotations
 
 import json
-from typing import Annotated, Literal
 
-from langchain_core.tools import tool
-from langgraph.prebuilt.tool_node import InjectedState
 from sqlalchemy import select
 
 from app.infrastructure.database.connection import get_session
 from app.infrastructure.database.models import BuildModel
 
 
-@tool
-async def list_builds(
-    environment: Literal["raid", "mythic_plus", "delves"] | None = None,
-    mode: Literal["single", "aoe"] | None = None,
-    hero_talent: Literal["slayer", "colossus"] | None = None,
-    limit: int = 10,
-    char_info: Annotated[object, InjectedState("char_info")] = None,
-) -> str:
-    """
-    List available builds for a class/spec/role with optional filters.
-    """
-    normalized_class = ""
-    normalized_spec = ""
-    normalized_role = ""
+def _normalize_char(char_info: object | None) -> tuple[str, str, str]:
     if isinstance(char_info, dict):
-        normalized_class = str(char_info.get("class", "")).strip().lower()
-        normalized_spec = str(char_info.get("spec", "")).strip().lower()
-        normalized_role = str(char_info.get("role", "")).strip().lower()
-    elif char_info is not None:
-        normalized_class = str(getattr(char_info, "wow_class", "")).strip().lower()
-        normalized_spec = str(getattr(char_info, "spec", "")).strip().lower()
-        normalized_role = str(getattr(char_info, "role", "")).strip().lower()
+        return (
+            str(char_info.get("class", "")).strip().lower(),
+            str(char_info.get("spec", "")).strip().lower(),
+            str(char_info.get("role", "")).strip().lower(),
+        )
+    if char_info is not None:
+        return (
+            str(getattr(char_info, "wow_class", "")).strip().lower(),
+            str(getattr(char_info, "spec", "")).strip().lower(),
+            str(getattr(char_info, "role", "")).strip().lower(),
+        )
+    return ("", "", "")
 
+
+async def execute_list_builds(
+    environment: str | None = None,
+    mode: str | None = None,
+    hero_talent: str | None = None,
+    limit: int = 10,
+    char_info: object | None = None,
+) -> str:
+    """Pure function — no LangChain dependency."""
+    normalized_class, normalized_spec, normalized_role = _normalize_char(char_info)
     if not normalized_class or not normalized_spec or not normalized_role:
-        return "No results found."
+        return json.dumps({"tool": "list_builds", "count": 0, "builds": []})
 
     query = (
         select(BuildModel)
@@ -81,3 +80,41 @@ async def list_builds(
         ],
     }
     return json.dumps(payload, ensure_ascii=True)
+
+
+# -- OpenAI function-tool JSON schema ------------------------------------
+
+LIST_BUILDS_SCHEMA: dict = {
+    "type": "function",
+    "name": "list_builds",
+    "description": (
+        "List available WoW builds for the user's class/spec, "
+        "optionally filtered by environment, mode, and hero talent."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "environment": {
+                "type": "string",
+                "enum": ["raid", "mythic_plus", "delves"],
+                "description": "Filter by game content type",
+            },
+            "mode": {
+                "type": "string",
+                "enum": ["single", "aoe"],
+                "description": "Filter by single-target or AoE",
+            },
+            "hero_talent": {
+                "type": "string",
+                "enum": ["slayer", "colossus"],
+                "description": "Filter by hero talent path",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max results to return (default 10)",
+                "default": 10,
+            },
+        },
+        "additionalProperties": False,
+    },
+}
