@@ -1,13 +1,11 @@
 """
 Skill uploader — uploads SKILL.md bundles to OpenAI via REST API.
-
-The Skills API (POST /v1/skills) is not yet in the Python SDK,
-so we use httpx directly for the multipart upload.
 """
 
 from __future__ import annotations
 
 import io
+import re
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -17,12 +15,25 @@ import httpx
 SKILLS_API_URL = "https://api.openai.com/v1/skills"
 
 
-async def upload_skill(api_key: str, skill_dir: Path) -> dict[str, Any]:
-    """
-    Upload a skill directory to OpenAI.
+def _parse_frontmatter(skill_md: Path) -> dict[str, str]:
+    """Extract YAML frontmatter fields from a SKILL.md file."""
+    text = skill_md.read_text(encoding="utf-8")
+    match = re.match(r"^---\s*\n(.*?)\n---", text, re.DOTALL)
+    if not match:
+        return {}
+    fields: dict[str, str] = {}
+    for line in match.group(1).splitlines():
+        if ":" in line:
+            key, _, value = line.partition(":")
+            fields[key.strip()] = value.strip()
+    return fields
 
-    Zips the directory contents and sends via POST /v1/skills.
-    """
+
+async def upload_skill(api_key: str, skill_dir: Path) -> dict[str, Any]:
+    """Upload a skill directory to OpenAI via POST /v1/skills."""
+    skill_md = skill_dir / "SKILL.md"
+    frontmatter = _parse_frontmatter(skill_md)
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for file_path in sorted(skill_dir.rglob("*")):
@@ -41,21 +52,24 @@ async def upload_skill(api_key: str, skill_dir: Path) -> dict[str, Any]:
 
     data = resp.json()
     skill_id = data.get("id", "")
-    name = data.get("name", skill_dir.name)
+    name = frontmatter.get("name", data.get("name", skill_dir.name))
+    description = frontmatter.get("description", "")
     version = data.get("default_version", 1)
 
     print(f"  Uploaded skill '{name}' -> {skill_id} (v{version})")
-    return {"skill_id": skill_id, "name": name, "version": version}
+    return {
+        "skill_id": skill_id,
+        "name": name,
+        "description": description,
+        "version": version,
+    }
 
 
 async def upload_all_skills(
     api_key: str,
     skills_root: Path,
 ) -> list[dict[str, Any]]:
-    """
-    Upload all skill directories under ``skills_root``.
-    Each subdirectory must contain a SKILL.md file.
-    """
+    """Upload all skill directories under ``skills_root``."""
     results: list[dict[str, Any]] = []
     for skill_dir in sorted(skills_root.iterdir()):
         if not skill_dir.is_dir():

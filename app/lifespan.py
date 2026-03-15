@@ -39,6 +39,7 @@ async def lifespan(app: FastAPI):
             "type": "skill_reference",
             "skill_id": m["skill_id"],
             "name": m["name"],
+            "description": m["description"],
         }
         for m in skill_metas
     ]
