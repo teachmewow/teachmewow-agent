@@ -1,9 +1,7 @@
 """
 LLM provider abstraction.
 
-Abstracts the LLM API so the orchestrator references a protocol,
-not a concrete SDK.  The first concrete implementation wraps the
-OpenAI *Responses API* (required for native ``web_search`` tool).
+Wraps the OpenAI Responses API with LangSmith tracing via ``wrap_openai``.
 """
 
 from __future__ import annotations
@@ -22,6 +20,9 @@ from app.infrastructure.config import get_settings
 class LLMProvider(Protocol):
     """Provider-agnostic interface consumed by the orchestrator."""
 
+    @property
+    def client(self) -> AsyncOpenAI: ...
+
     async def create_response(
         self,
         *,
@@ -33,14 +34,29 @@ class LLMProvider(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# OpenAI concrete implementation (Responses API)
+# OpenAI concrete implementation (Responses API + LangSmith tracing)
 # ---------------------------------------------------------------------------
 
 class OpenAIProvider:
-    """Wraps ``AsyncOpenAI`` and delegates to the Responses API."""
+    """Wraps ``AsyncOpenAI`` with LangSmith tracing and Responses API."""
 
-    def __init__(self, api_key: str) -> None:
-        self.client = AsyncOpenAI(api_key=api_key)
+    def __init__(self, api_key: str, *, enable_tracing: bool = True) -> None:
+        raw_client = AsyncOpenAI(api_key=api_key)
+
+        if enable_tracing:
+            try:
+                from langsmith.wrappers import wrap_openai
+                self._client = wrap_openai(raw_client)
+                print("LangSmith tracing enabled for OpenAI client")
+            except ImportError:
+                self._client = raw_client
+                print("LangSmith not installed — tracing disabled")
+        else:
+            self._client = raw_client
+
+    @property
+    def client(self) -> AsyncOpenAI:
+        return self._client
 
     async def create_response(
         self,
@@ -50,16 +66,17 @@ class OpenAIProvider:
         tools: list[dict[str, Any]],
         stream: bool = True,
     ) -> Any:
-        return await self.client.responses.create(
+        return await self._client.responses.create(
             model=model,
             input=input,
             tools=tools,
             stream=stream,
         )
 
-    # Convenience -----------------------------------------------------------
-
     @classmethod
     def from_settings(cls) -> OpenAIProvider:
         settings = get_settings()
-        return cls(api_key=settings.openai_api_key)
+        return cls(
+            api_key=settings.openai_api_key,
+            enable_tracing=not settings.is_production,
+        )

@@ -12,7 +12,6 @@ from app.domain.repositories import MessageRepository, ThreadRepository
 
 from ..agent.orchestrator import Orchestrator
 from ..agent.prompts.orchestrator_prompt import build_orchestrator_prompt
-from ..agent.skills import SkillRegistry
 from ..agent.state_schema import BuildInfo, CharInfo
 
 
@@ -28,12 +27,10 @@ class ChatService:
     def __init__(
         self,
         orchestrator: Orchestrator,
-        skill_registry: SkillRegistry,
         message_repository: MessageRepository,
         thread_repository: ThreadRepository,
     ):
         self.orchestrator = orchestrator
-        self.skill_registry = skill_registry
         self.message_repository = message_repository
         self.thread_repository = thread_repository
 
@@ -92,9 +89,8 @@ class ChatService:
             except Exception:
                 persisted_build_info = None
 
-        # Build system prompt
+        # Build system prompt (skills are on OpenAI's side, not in the prompt)
         system_prompt = build_orchestrator_prompt(
-            skill_registry=self.skill_registry,
             char_info=normalized_char_info,
             build_info=persisted_build_info,
         )
@@ -152,13 +148,11 @@ class ChatService:
 
 def create_chat_service(
     orchestrator: Orchestrator,
-    skill_registry: SkillRegistry,
     message_repository: MessageRepository,
     thread_repository: ThreadRepository,
 ) -> ChatService:
     return ChatService(
         orchestrator=orchestrator,
-        skill_registry=skill_registry,
         message_repository=message_repository,
         thread_repository=thread_repository,
     )

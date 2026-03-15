@@ -17,7 +17,6 @@ from typing import Any
 
 from app.infrastructure.llm.provider import LLMProvider
 
-from .skills import SkillRegistry
 from .tools.tool_executor import ToolExecutor
 
 
@@ -25,6 +24,9 @@ class Orchestrator:
     """
     Stateless orchestrator — one instance is shared across requests.
     Per-request state is passed via ``stream()``.
+
+    Skills are mounted on OpenAI's side (via shell tool + skill_reference).
+    The model discovers and follows them autonomously.
     """
 
     def __init__(
@@ -33,12 +35,11 @@ class Orchestrator:
         provider: LLMProvider,
         model: str,
         tools_config: list[dict[str, Any]],
-        skill_registry: SkillRegistry,
+        skill_registry: Any = None,  # kept for compat, unused
     ) -> None:
         self._provider = provider
         self._model = model
         self._tools_config = tools_config
-        self._skill_registry = skill_registry
 
     async def stream(
         self,
@@ -124,6 +125,12 @@ class Orchestrator:
                         yield _sse("web_search", {"status": "searching"})
                     elif etype == "response.web_search_call.completed":
                         yield _sse("web_search", {"status": "completed"})
+
+                    # -- shell call events (skill activation via shell) --
+                    elif etype == "response.shell_call.in_progress":
+                        yield _sse("skill_active", {"status": "running"})
+                    elif etype == "response.shell_call.completed":
+                        yield _sse("skill_active", {"status": "completed"})
 
                 # -- Finished streaming this response turn --
 

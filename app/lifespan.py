@@ -3,18 +3,19 @@ FastAPI lifespan events for application startup and shutdown.
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 
 from app.application.agent.orchestrator import Orchestrator
-from app.application.agent.skills import SkillRegistry
-from app.application.agent.skills.build_coaching import build_coaching_skill
-from app.application.agent.skills.build_lookup import build_lookup_skill
 from app.application.agent.tools.build_lookup import BUILD_LOOKUP_SCHEMA
 from app.application.agent.tools.list_builds import LIST_BUILDS_SCHEMA
 from app.infrastructure import close_database, init_database
 from app.infrastructure.config import get_settings
 from app.infrastructure.llm.provider import OpenAIProvider
+from app.infrastructure.skills import upload_all_skills
+
+SKILLS_ROOT = Path(__file__).resolve().parent.parent / "skills"
 
 
 @asynccontextmanager
@@ -26,14 +27,17 @@ async def lifespan(app: FastAPI):
     engine, session_factory = await init_database()
     print(f"Database initialized: {engine.url}")
 
-    # LLM provider (OpenAI Responses API)
+    # LLM provider (OpenAI Responses API + LangSmith tracing)
     settings = get_settings()
     provider = OpenAIProvider.from_settings()
 
-    # Skill registry
-    skill_registry = SkillRegistry()
-    skill_registry.register(build_lookup_skill)
-    skill_registry.register(build_coaching_skill)
+    # Upload skills to OpenAI
+    print("Uploading skills...")
+    skill_metas = await upload_all_skills(provider.client, SKILLS_ROOT)
+    skill_refs = [
+        {"type": "skill_reference", "skill_id": m["skill_id"]}
+        for m in skill_metas
+    ]
 
     # Tool configuration for the Responses API
     tools_config = [
@@ -42,6 +46,14 @@ async def lifespan(app: FastAPI):
             "type": "web_search",
             "search_context_size": "medium",
             "user_location": {"type": "approximate", "country": "US"},
+        },
+        # Shell tool with mounted skills
+        {
+            "type": "shell",
+            "environment": {
+                "type": "container_auto",
+                "skills": skill_refs,
+            },
         },
         # Our function tools
         LIST_BUILDS_SCHEMA,
@@ -53,16 +65,16 @@ async def lifespan(app: FastAPI):
         provider=provider,
         model=settings.openai_main_model,
         tools_config=tools_config,
-        skill_registry=skill_registry,
+        skill_registry=None,  # Skills are now on OpenAI's side
     )
 
     # Store in app state
     app.state.orchestrator = orchestrator
-    app.state.skill_registry = skill_registry
+    app.state.skill_metas = skill_metas
     app.state.db_engine = engine
 
     print(f"Model: {settings.openai_main_model}")
-    print(f"Skills: {skill_registry.all_names()}")
+    print(f"Skills uploaded: {[m['name'] for m in skill_metas]}")
     print(f"Tools: {[t.get('name', t.get('type', '?')) for t in tools_config]}")
     print("Orchestrator ready")
 

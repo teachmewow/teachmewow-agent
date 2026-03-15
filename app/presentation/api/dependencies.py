@@ -8,7 +8,6 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.agent.orchestrator import Orchestrator
-from app.application.agent.skills import SkillRegistry
 from app.application.services import (
     ChatService,
     ThreadService,
@@ -42,11 +41,6 @@ def get_orchestrator(request: Request) -> Orchestrator:
     return request.app.state.orchestrator
 
 
-def get_skill_registry(request: Request) -> SkillRegistry:
-    """Get the skill registry from app state."""
-    return request.app.state.skill_registry
-
-
 def get_message_repository(
     session: Annotated[AsyncSession, Depends(get_db_session)]
 ) -> MessageRepositoryImpl:
@@ -63,14 +57,12 @@ def get_thread_repository(
 
 def get_chat_service(
     orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
-    skill_registry: Annotated[SkillRegistry, Depends(get_skill_registry)],
     message_repo: Annotated[MessageRepositoryImpl, Depends(get_message_repository)],
     thread_repo: Annotated[ThreadRepositoryImpl, Depends(get_thread_repository)],
 ) -> ChatService:
     """Get chat service with all dependencies."""
     return create_chat_service(
         orchestrator=orchestrator,
-        skill_registry=skill_registry,
         message_repository=message_repo,
         thread_repository=thread_repo,
     )

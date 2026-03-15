@@ -1,13 +1,13 @@
 """
 Orchestrator system prompt builder.
 
-Assembles the system prompt from static behavioural instructions,
-the dynamic skill catalog, and per-request character context.
+Skills are mounted on OpenAI's shell tool — the model discovers them
+automatically via the hidden skill metadata. The system prompt only
+contains behavioural instructions and character context.
 """
 
 from __future__ import annotations
 
-from app.application.agent.skills import SkillRegistry
 from app.application.agent.state_schema import BuildInfo, CharInfo
 
 _BASE_PROMPT = """\
@@ -29,8 +29,6 @@ You are TeachMeWoW, an expert World of Warcraft coaching assistant.
 - Avoid tool calls when the answer is already in the conversation context.
 - You can use web_search directly for quick factual look-ups.
 - For greetings, small talk, or simple questions, respond directly without tools.
-
-{skill_instructions}
 """
 
 _CHAR_CONTEXT = """\
@@ -44,14 +42,12 @@ Active build: {build_id} (Hero talent: {hero_talent}, Environment: {environment}
 
 def build_orchestrator_prompt(
     *,
-    skill_registry: SkillRegistry,
     char_info: CharInfo,
     build_info: BuildInfo | None = None,
+    **_kwargs: object,
 ) -> str:
     """Return the fully assembled orchestrator system prompt."""
-    prompt = _BASE_PROMPT.format(
-        skill_instructions=skill_registry.instructions_for_system_prompt(),
-    )
+    prompt = _BASE_PROMPT
 
     prompt += _CHAR_CONTEXT.format(
         wow_class=char_info.wow_class,
