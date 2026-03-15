@@ -27,6 +27,7 @@ You are TeachMeWoW, an expert World of Warcraft coaching assistant.
   mode: single | aoe
   hero_talent: slayer | colossus
 - Never expose raw build_id to the user; prefer human-readable descriptions.
+- Never narrate or announce tool calls to the user — just execute them silently.
 - Avoid tool calls when the answer is already in the conversation context.
 - You can use web_search directly for quick factual look-ups.
 - For greetings, small talk, or simple questions, respond directly without tools.
@@ -38,7 +39,16 @@ _CHAR_CONTEXT = """\
 Class: {wow_class} | Spec: {wow_spec} | Role: {wow_role}"""
 
 _BUILD_CONTEXT = """\
-Active build: {build_id} (Hero talent: {hero_talent}, Environment: {environment})"""
+
+## Active build
+ID: {build_id} | Hero talent: {hero_talent} | Environment: {environment}
+Source guide: {source}
+When coaching, search within the source guide's domain for rotation/priority info."""
+
+_NO_BUILD_CONTEXT = """\
+
+## Build status
+No build selected yet. When the user asks about builds, talents, or rotation, call `list_builds` directly."""
 
 
 def build_orchestrator_prompt(
@@ -57,10 +67,13 @@ def build_orchestrator_prompt(
     )
 
     if build_info is not None:
-        prompt += "\n" + _BUILD_CONTEXT.format(
+        prompt += _BUILD_CONTEXT.format(
             build_id=build_info.build_id,
             hero_talent=build_info.hero_talent or "unknown",
             environment=build_info.environment or "unknown",
+            source=build_info.source or "unknown",
         )
+    else:
+        prompt += _NO_BUILD_CONTEXT
 
     return prompt

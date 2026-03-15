@@ -47,15 +47,15 @@ class OrchestratorBuilder:
         registry.register(BuildLookupHandler())
         return registry
 
-    @staticmethod
     def _build_tools_config(
+        self,
         skill_defs: list[dict],
         registry: ToolRegistry,
     ) -> list[dict]:
         return [
             {
                 "type": "web_search",
-                "search_context_size": "medium",
+                "search_context_size": self._settings.openai_search_context_size,
                 "filters": {"allowed_domains": ["wowhead.com", "icy-veins.com"]},
                 "user_location": {"type": "approximate", "country": "US"},
             },

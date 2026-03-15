@@ -34,6 +34,7 @@ async def send_message(
             user_id=request.user_id,
             input_text=request.input,
             char_info=request.char_info,
+            selected_build_id=request.selected_build_id,
         ),
         media_type="text/event-stream",
         headers={

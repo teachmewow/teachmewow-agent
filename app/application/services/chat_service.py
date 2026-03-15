@@ -13,6 +13,7 @@ from app.domain.repositories import MessageRepository, ThreadRepository
 from ..agent.orchestrator import Orchestrator
 from ..agent.prompts.orchestrator_prompt import build_orchestrator_prompt
 from ..agent.state_schema import BuildInfo, CharInfo
+from ..agent.tools.build_lookup import _fetch_build
 
 
 class ChatService:
@@ -40,6 +41,7 @@ class ChatService:
         user_id: str,
         input_text: str,
         char_info: CharInfo,
+        selected_build_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """Process a user message and stream the response."""
         normalized_char_info = CharInfo(
@@ -79,31 +81,57 @@ class ChatService:
         # Convert domain messages to Responses API format
         messages = _to_responses_api_messages(history)
 
-        # Resolve persisted build info
-        persisted_build_info: BuildInfo | None = None
-        if isinstance(persisted_thread.active_build_info, dict):
-            try:
-                persisted_build_info = BuildInfo.model_validate(
-                    persisted_thread.active_build_info,
-                )
-            except Exception:
-                persisted_build_info = None
-
-        # Build system prompt (skills are on OpenAI's side, not in the prompt)
-        system_prompt = build_orchestrator_prompt(
-            char_info=normalized_char_info,
-            build_info=persisted_build_info,
-        )
-
-        # Prepare char_info dict for tool executor
+        # Resolve build info — selected_build_id from UI takes priority
         char_dict = {
             "class": normalized_char_info.wow_class,
             "spec": normalized_char_info.spec,
             "role": normalized_char_info.role,
         }
+
+        resolved_build_info: BuildInfo | None = None
+
+        if selected_build_id and selected_build_id != persisted_thread.active_build_id:
+            # User selected a new build via the UI cards
+            build_data = await _fetch_build(
+                build_id=selected_build_id,
+                char_info=char_dict,
+            )
+            if build_data:
+                resolved_build_info = BuildInfo(
+                    build_id=build_data["build_id"],
+                    import_code=build_data.get("import_code", ""),
+                    wow_class=char_dict.get("class", ""),
+                    spec=char_dict.get("spec", ""),
+                    hero_talent=build_data.get("hero_talent"),
+                    environment=build_data.get("environment"),
+                    scenario=build_data.get("scenario"),
+                    source=build_data.get("source"),
+                    patch=build_data.get("patch"),
+                )
+                await self.thread_repository.set_active_build_id(
+                    thread_id, selected_build_id,
+                )
+                await self.thread_repository.set_active_build_info(
+                    thread_id, resolved_build_info.model_dump(mode="json"),
+                )
+        elif isinstance(persisted_thread.active_build_info, dict):
+            try:
+                resolved_build_info = BuildInfo.model_validate(
+                    persisted_thread.active_build_info,
+                )
+            except Exception:
+                resolved_build_info = None
+
+        # Build system prompt (skills are on OpenAI's side, not in the prompt)
+        system_prompt = build_orchestrator_prompt(
+            char_info=normalized_char_info,
+            build_info=resolved_build_info,
+        )
+
+        # Prepare build dict for tool executor
         build_dict = (
-            persisted_build_info.model_dump(mode="json")
-            if persisted_build_info else None
+            resolved_build_info.model_dump(mode="json")
+            if resolved_build_info else None
         )
 
         # Stream via orchestrator — pass all events through to the client.

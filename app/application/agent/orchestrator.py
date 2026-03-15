@@ -170,10 +170,12 @@ class Orchestrator:
                     _maybe_update_build_context(result, tool_executor)
 
                     # SSE uses item id (same as tool_call event)
+                    # Send full result for list_builds (frontend needs it for cards)
+                    sse_result = result if fc.name == "list_builds" else result[:500]
                     yield _sse("tool_result", {
                         "name": fc.name,
                         "call_id": fc.id,
-                        "result": result[:500],
+                        "result": sse_result,
                     })
 
                     # Responses API uses call_id for matching

@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_main_model: str = "gpt-5.2"
     openai_reasoning_effort: str = "none"  # none | low | medium | high
+    openai_search_context_size: str = "medium"  # low | medium | high
 
     # App
     app_env: str = "development"

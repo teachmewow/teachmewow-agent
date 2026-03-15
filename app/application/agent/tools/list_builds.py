@@ -24,7 +24,6 @@ async def execute_list_builds(
     environment: str | None = None,
     mode: str | None = None,
     hero_talent: str | None = None,
-    limit: int = 10,
     char_info: object | None = None,
 ) -> str:
     """Pure function — no LangChain dependency."""
@@ -38,7 +37,6 @@ async def execute_list_builds(
         .where(BuildModel.wow_spec == normalized_spec)
         .where(BuildModel.wow_role == normalized_role)
         .order_by(BuildModel.updated_at.desc())
-        .limit(max(limit, 1))
     )
 
     if environment:
@@ -109,7 +107,6 @@ class ListBuildsHandler:
             environment=args.get("environment"),
             mode=args.get("mode"),
             hero_talent=args.get("hero_talent"),
-            limit=args.get("limit", 10),
             char_info=ctx.char_info,
         )
 
