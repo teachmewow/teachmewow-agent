@@ -11,13 +11,24 @@ description: List available WoW builds when no active build is selected.
 
 ## Flow
 1. Call `list_builds` once with no filters (returns all builds for the character's class/spec).
-2. Do NOT call `build_lookup` — the frontend renders selectable build cards automatically.
-3. After the tool returns, respond with a short message:
-   - Tell the user how many builds were found.
-   - Ask them to **select one from the cards below** to continue.
-   - Suggest what they can explore after selecting: rotation/priority, resource management, cooldown usage, openers, Mythic+ vs Raid differences, talent alternatives, etc.
+2. The frontend renders selectable build cards automatically — you MUST NOT repeat, describe, or list the builds yourself.
+3. Respond with a **short** message (2-3 sentences max).
 
-## Only add filters when the user is specific
-If the user says "slayer M+" or "raid ST", add those filters. Otherwise no filters.
+## WRONG response (NEVER do this)
+```
+Aqui estão as builds disponíveis pra Warrior Arms (DPS):
+Raid (Single Target) — Slayer
+Raid (Multi/AoE) — Colossus
+Mythic+ (AoE) — Slayer
+Selecione uma build...
+```
 
-## NEVER call list_builds more than once per turn.
+## CORRECT response (do this)
+```
+Encontrei 5 builds disponíveis para Arms Warrior — selecione uma nos cards abaixo! Depois posso te ajudar com rotação, cooldowns, openers ou diferenças entre M+ e Raid.
+```
+
+## Critical rules
+- **NEVER list, enumerate, or describe individual builds in your text.** The UI cards already show them.
+- NEVER call `list_builds` more than once per turn.
+- Only add filters when the user is specific (e.g. "slayer M+", "raid ST").

@@ -51,3 +51,10 @@ python -c "from app.main import app"
 - **Tool schemas** — defined as class attributes on handler classes (e.g. `ListBuildsHandler.schema`), not separate constants. The `LIST_BUILDS_SCHEMA` / `BUILD_LOOKUP_SCHEMA` aliases exist for backward compat.
 - **Reasoning effort** — set via `OPENAI_REASONING_EFFORT` env var. Value "none" means no reasoning block; "low"/"medium"/"high" are valid.
 - **Web search filters** — configured in `OrchestratorBuilder._build_tools_config()`, not in lifespan.
+
+### Build Ingestion
+- `app/infrastructure/blizzard/` — Blizzard API client + talent import code decoder
+- `app/infrastructure/ingestion/` — Build normalization and upsert
+- `POST /builds/ingest` — Accepts JSON with builds, processes via Blizzard API, persists in Postgres
+- `POST /builds/ingest/yaml` — Same, but accepts YAML
+- Env vars: `BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET`

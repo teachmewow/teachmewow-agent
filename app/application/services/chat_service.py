@@ -122,10 +122,11 @@ class ChatService:
             except Exception:
                 resolved_build_info = None
 
-        # Build system prompt (skills are on OpenAI's side, not in the prompt)
+        # Build system prompt with skills injected directly
         system_prompt = build_orchestrator_prompt(
             char_info=normalized_char_info,
             build_info=resolved_build_info,
+            skill_contents=self.orchestrator.skill_contents,
         )
 
         # Prepare build dict for tool executor

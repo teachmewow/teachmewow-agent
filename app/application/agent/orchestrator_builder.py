@@ -10,7 +10,7 @@ from pathlib import Path
 
 from app.infrastructure.config import Settings, get_settings
 from app.infrastructure.llm.provider import OpenAIProvider
-from app.infrastructure.skills.loader import load_local_skills
+from app.infrastructure.skills.loader import load_local_skills, load_skill_contents
 
 from .orchestrator import Orchestrator
 from .tools.build_lookup import BuildLookupHandler
@@ -29,6 +29,7 @@ class OrchestratorBuilder:
     def build(self) -> Orchestrator:
         provider = OpenAIProvider.from_settings()
         skill_defs = load_local_skills(SKILLS_ROOT)
+        skill_contents = load_skill_contents(SKILLS_ROOT)
         tool_registry = self._build_tool_registry()
         tools_config = self._build_tools_config(skill_defs, tool_registry)
 
@@ -38,6 +39,7 @@ class OrchestratorBuilder:
             tools_config=tools_config,
             tool_registry=tool_registry,
             reasoning_effort=self._settings.openai_reasoning_effort,
+            skill_contents=skill_contents,
         )
 
     @staticmethod

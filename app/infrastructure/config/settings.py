@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     openai_reasoning_effort: str = "none"  # none | low | medium | high
     openai_search_context_size: str = "medium"  # low | medium | high
 
+    # Blizzard API
+    blizzard_client_id: str = ""
+    blizzard_client_secret: str = ""
+
     # App
     app_env: str = "development"
     debug: bool = True

@@ -18,6 +18,7 @@ dependencies = [
     "httpx>=0.28.0",
     "python-dotenv>=1.0.0",
     "asyncpg>=0.30.0",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]

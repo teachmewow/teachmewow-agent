@@ -51,12 +51,14 @@ class Orchestrator:
         tools_config: list[dict[str, Any]],
         tool_registry: ToolRegistry,
         reasoning_effort: str = "none",
+        skill_contents: list[dict[str, str]] | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
         self._tools_config = tools_config
         self._tool_registry = tool_registry
         self._reasoning_effort = reasoning_effort
+        self.skill_contents = skill_contents or []
 
     @traceable(
         run_type="chain",
