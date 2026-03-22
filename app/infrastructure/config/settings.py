@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     openai_main_model: str = "gpt-5.2"
     openai_reasoning_effort: str = "none"  # none | low | medium | high
     openai_search_context_size: str = "medium"  # low | medium | high
+    openai_recommender_model: str = "gpt-4.1-nano"
 
     # Blizzard API
     blizzard_client_id: str = ""

@@ -2,7 +2,7 @@
 Presentation layer - API and serialization.
 """
 
-from .api import builds_router, chat_router, threads_router
+from .api import builds_router, chat_router, recommendations_router, threads_router
 from .schemas import (
     CreateThreadRequest,
     MessageResponse,
@@ -16,6 +16,7 @@ __all__ = [
     "chat_router",
     "threads_router",
     "builds_router",
+    "recommendations_router",
     # Schemas
     "SendMessageRequest",
     "MessageResponse",

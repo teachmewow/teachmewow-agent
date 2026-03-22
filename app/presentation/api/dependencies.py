@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.application.agent.orchestrator import Orchestrator
 from app.application.services import (
     ChatService,
+    RecommendationService,
     ThreadService,
     create_chat_service,
+    create_recommendation_service,
     create_thread_service,
 )
 from app.infrastructure.database import (
@@ -81,7 +83,19 @@ def get_thread_service(
     )
 
 
+def get_recommendation_service(request: Request) -> RecommendationService:
+    """Get recommendation service from orchestrator's provider and skills."""
+    orchestrator = request.app.state.orchestrator
+    return create_recommendation_service(
+        provider=orchestrator._provider,
+        skill_contents=orchestrator.skill_contents,
+    )
+
+
 # Type aliases for cleaner route signatures
 DBSession = Annotated[AsyncSession, Depends(get_db_session)]
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 ThreadServiceDep = Annotated[ThreadService, Depends(get_thread_service)]
+RecommendationServiceDep = Annotated[
+    RecommendationService, Depends(get_recommendation_service)
+]

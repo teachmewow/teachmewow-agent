@@ -9,7 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.infrastructure.config import get_settings
 from app.lifespan import lifespan
-from app.presentation import builds_router, chat_router, threads_router
+from app.presentation import (
+    builds_router,
+    chat_router,
+    recommendations_router,
+    threads_router,
+)
 
 # Suppress Pydantic serialization warnings from LangSmith @traceable.
 # These fire when LangSmith serializes OpenAI tool configs (web_search, shell)
@@ -47,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(threads_router)
     app.include_router(builds_router)
+    app.include_router(recommendations_router)
 
     # Health check endpoint
     @app.get("/health")
