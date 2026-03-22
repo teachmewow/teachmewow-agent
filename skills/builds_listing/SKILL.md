@@ -1,6 +1,6 @@
 ---
 name: builds-listing
-description: List available WoW builds when no active build is selected.
+description: List available WoW builds ONLY when NO active build is selected (system prompt shows "No build selected yet"). NEVER trigger when an "Active build" section exists — use build-coaching instead.
 ---
 
 # Builds Listing

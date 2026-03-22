@@ -1,6 +1,6 @@
 ---
 name: build-coaching
-description: Coach on rotation, priorities, cooldowns, openers, and optimization for WoW builds.
+description: Coach on rotation, priorities, cooldowns, openers, and optimization when an "Active build" section exists in the system prompt. Takes priority over builds-listing when a build is selected.
 ---
 
 # Build Coaching
