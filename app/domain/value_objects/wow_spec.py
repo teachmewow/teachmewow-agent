@@ -1,22 +1,29 @@
 """
 World of Warcraft specialization enum.
+
+Values use WoW-canonical names matching the manifest and database.
+Ambiguous specs (frost, holy, protection, restoration) are disambiguated
+by querying with (class, spec) as a composite key — the spec value alone
+may not be unique across classes.
+
+See CLAUDE.md "Spec naming convention" for the full rationale.
 """
 
 from enum import StrEnum
 
 
 class WowSpec(StrEnum):
-    """World of Warcraft specializations."""
+    """World of Warcraft specializations — WoW-canonical names."""
 
     # Warrior
     ARMS = "arms"
     FURY = "fury"
-    PROTECTION_WARRIOR = "protection-warrior"
+    PROTECTION = "protection"
 
     # Paladin
-    HOLY_PALADIN = "holy-paladin"
-    PROTECTION_PALADIN = "protection-paladin"
+    HOLY = "holy"
     RETRIBUTION = "retribution"
+    # protection — reuses PROTECTION (same WoW name, disambiguated by class)
 
     # Hunter
     BEAST_MASTERY = "beast-mastery"
@@ -30,23 +37,23 @@ class WowSpec(StrEnum):
 
     # Priest
     DISCIPLINE = "discipline"
-    HOLY_PRIEST = "holy-priest"
     SHADOW = "shadow"
+    # holy — reuses HOLY
 
     # Death Knight
     BLOOD = "blood"
-    FROST_DK = "frost-dk"
+    FROST = "frost"
     UNHOLY = "unholy"
 
     # Shaman
     ELEMENTAL = "elemental"
     ENHANCEMENT = "enhancement"
-    RESTORATION_SHAMAN = "restoration-shaman"
+    RESTORATION = "restoration"
 
     # Mage
     ARCANE = "arcane"
     FIRE = "fire"
-    FROST_MAGE = "frost-mage"
+    # frost — reuses FROST
 
     # Warlock
     AFFLICTION = "affliction"
@@ -62,7 +69,7 @@ class WowSpec(StrEnum):
     BALANCE = "balance"
     FERAL = "feral"
     GUARDIAN = "guardian"
-    RESTORATION_DRUID = "restoration-druid"
+    # restoration — reuses RESTORATION
 
     # Demon Hunter
     HAVOC = "havoc"
