@@ -39,6 +39,7 @@ def serialize_message(message: Message) -> MessageResponse:
         tool_call_id=message.tool_call_id,
         tool_result=message.tool_result,
         reasoning=message.reasoning,
+        response_metadata=message.response_metadata,
         token_count=message.token_count,
     )
 
@@ -60,6 +61,8 @@ def serialize_thread(thread: Thread) -> ThreadResponse:
         wow_spec=thread.wow_spec.value,
         wow_role=thread.wow_role,
         active_build_id=thread.active_build_id,
+        active_build_info=thread.active_build_info,
+        coaching_state=thread.coaching_state,
         title=thread.title,
         created_at=thread.created_at.isoformat(),
         updated_at=thread.updated_at.isoformat(),

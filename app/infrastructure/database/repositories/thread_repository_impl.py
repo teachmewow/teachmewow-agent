@@ -28,6 +28,8 @@ class ThreadRepositoryImpl:
             wow_spec=WowSpec(model.wow_spec),
             wow_role=model.wow_role,
             active_build_id=model.active_build_id,
+            active_build_info=model.active_build_info,
+            coaching_state=model.coaching_state,
             title=model.title,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -42,6 +44,8 @@ class ThreadRepositoryImpl:
             wow_spec=entity.wow_spec.value,
             wow_role=entity.wow_role,
             active_build_id=entity.active_build_id,
+            active_build_info=entity.active_build_info,
+            coaching_state=entity.coaching_state,
             title=entity.title,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
@@ -93,6 +97,8 @@ class ThreadRepositoryImpl:
         model.wow_spec = thread.wow_spec.value
         model.wow_role = thread.wow_role
         model.active_build_id = thread.active_build_id
+        model.active_build_info = thread.active_build_info
+        model.coaching_state = thread.coaching_state
         model.updated_at = datetime.now(timezone.utc)
 
         await self.session.flush()
@@ -123,6 +129,8 @@ class ThreadRepositoryImpl:
                 wow_spec=thread.wow_spec.value,
                 wow_role=thread.wow_role,
                 active_build_id=thread.active_build_id,
+                active_build_info=thread.active_build_info,
+                coaching_state=thread.coaching_state,
                 title=thread.title,
                 created_at=thread.created_at,
                 updated_at=thread.updated_at,
@@ -154,5 +162,29 @@ class ThreadRepositoryImpl:
         if not model:
             return
         model.active_build_id = active_build_id
+        model.updated_at = datetime.now(timezone.utc)
+        await self.session.flush()
+
+    async def set_active_build_info(self, thread_id: str, active_build_info: dict | None) -> None:
+        """Persist current active build info for a thread."""
+        result = await self.session.execute(
+            select(ThreadModel).where(ThreadModel.id == thread_id)
+        )
+        model = result.scalar_one_or_none()
+        if not model:
+            return
+        model.active_build_info = active_build_info
+        model.updated_at = datetime.now(timezone.utc)
+        await self.session.flush()
+
+    async def set_coaching_state(self, thread_id: str, coaching_state: dict | None) -> None:
+        """Persist latest coaching checklist state for a thread."""
+        result = await self.session.execute(
+            select(ThreadModel).where(ThreadModel.id == thread_id)
+        )
+        model = result.scalar_one_or_none()
+        if not model:
+            return
+        model.coaching_state = coaching_state
         model.updated_at = datetime.now(timezone.utc)
         await self.session.flush()

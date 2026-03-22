@@ -10,8 +10,7 @@ class CharInfoRequest(BaseModel):
     spec: str = Field(..., description="WoW specialization context")
     role: str = Field(..., description="WoW role context (tank/healer/dps)")
 
-    class Config:
-        populate_by_name = True
+    model_config = {"populate_by_name": True}
 
 
 class SendMessageRequest(BaseModel):
@@ -26,6 +25,9 @@ class SendMessageRequest(BaseModel):
     # Required WoW context
     char_info: CharInfoRequest = Field(..., description="Character context")
 
+    # Build selection from UI
+    selected_build_id: str | None = Field(default=None, description="Build selected by user in the UI")
+
 
 class MessageResponse(BaseModel):
     """Response schema for a single message."""
@@ -39,4 +41,5 @@ class MessageResponse(BaseModel):
     tool_call_id: str | None = None
     tool_result: str | None = None
     reasoning: str | None = None
+    response_metadata: dict | None = None
     token_count: int | None = None

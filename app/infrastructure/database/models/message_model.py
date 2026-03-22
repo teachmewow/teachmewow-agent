@@ -35,4 +35,5 @@ class MessageModel(Base):
     tool_call_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tool_result: Mapped[str | None] = mapped_column(Text, nullable=True)
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     token_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

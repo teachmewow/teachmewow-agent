@@ -1,0 +1,246 @@
+{
+  "patch": "11.1.0",
+  "last_updated": "2026-03-22T17:26:23Z",
+  "specs": [
+    {
+      "class": "warrior",
+      "spec": "arms",
+      "role": "dps",
+      "status": "ingested"
+    },
+    {
+      "class": "warrior",
+      "spec": "fury",
+      "role": "dps",
+      "status": "ingested"
+    },
+    {
+      "class": "warrior",
+      "spec": "protection",
+      "role": "tank",
+      "status": "scraped"
+    },
+    {
+      "class": "paladin",
+      "spec": "holy",
+      "role": "healer",
+      "status": "scraped"
+    },
+    {
+      "class": "paladin",
+      "spec": "protection",
+      "role": "tank",
+      "status": "scraped"
+    },
+    {
+      "class": "paladin",
+      "spec": "retribution",
+      "role": "dps",
+      "status": "scraped"
+    },
+    {
+      "class": "hunter",
+      "spec": "beast-mastery",
+      "role": "dps",
+      "status": "scraped"
+    },
+    {
+      "class": "hunter",
+      "spec": "marksmanship",
+      "role": "dps",
+      "status": "scraped"
+    },
+    {
+      "class": "hunter",
+      "spec": "survival",
+      "role": "dps",
+      "status": "scraped"
+    },
+    {
+      "class": "rogue",
+      "spec": "assassination",
+      "role": "dps",
+      "status": "scraped"
+    },
+    {
+      "class": "rogue",
+      "spec": "outlaw",
+      "role": "dps",
+      "status": "scraped"
+    },
+    {
+      "class": "rogue",
+      "spec": "subtlety",
+      "role": "dps",
+      "status": "scraped"
+    },
+    {
+      "class": "priest",
+      "spec": "discipline",
+      "role": "healer",
+      "status": "scraped"
+    },
+    {
+      "class": "priest",
+      "spec": "holy",
+      "role": "healer",
+      "status": "scraped"
+    },
+    {
+      "class": "priest",
+      "spec": "shadow",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "death-knight",
+      "spec": "blood",
+      "role": "tank",
+      "status": "pending"
+    },
+    {
+      "class": "death-knight",
+      "spec": "frost",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "death-knight",
+      "spec": "unholy",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "shaman",
+      "spec": "elemental",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "shaman",
+      "spec": "enhancement",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "shaman",
+      "spec": "restoration",
+      "role": "healer",
+      "status": "pending"
+    },
+    {
+      "class": "mage",
+      "spec": "arcane",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "mage",
+      "spec": "fire",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "mage",
+      "spec": "frost",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "warlock",
+      "spec": "affliction",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "warlock",
+      "spec": "demonology",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "warlock",
+      "spec": "destruction",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "monk",
+      "spec": "brewmaster",
+      "role": "tank",
+      "status": "pending"
+    },
+    {
+      "class": "monk",
+      "spec": "mistweaver",
+      "role": "healer",
+      "status": "pending"
+    },
+    {
+      "class": "monk",
+      "spec": "windwalker",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "druid",
+      "spec": "balance",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "druid",
+      "spec": "feral",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "druid",
+      "spec": "guardian",
+      "role": "tank",
+      "status": "pending"
+    },
+    {
+      "class": "druid",
+      "spec": "restoration",
+      "role": "healer",
+      "status": "pending"
+    },
+    {
+      "class": "demon-hunter",
+      "spec": "havoc",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "demon-hunter",
+      "spec": "vengeance",
+      "role": "tank",
+      "status": "pending"
+    },
+    {
+      "class": "demon-hunter",
+      "spec": "devourer",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "evoker",
+      "spec": "devastation",
+      "role": "dps",
+      "status": "pending"
+    },
+    {
+      "class": "evoker",
+      "spec": "preservation",
+      "role": "healer",
+      "status": "pending"
+    },
+    {
+      "class": "evoker",
+      "spec": "augmentation",
+      "role": "dps",
+      "status": "pending"
+    }
+  ]
+}

@@ -19,13 +19,12 @@ async def send_message(
     """
     Send a message and stream the response.
 
-    This endpoint accepts a user message and streams the AI response
-    using Server-Sent Events (SSE).
-
-    Events emitted:
-    - llm_delta: Token-by-token LLM response
-    - tool_call: When the agent calls a tool
-    - tool_result: Result of a tool execution
+    Events emitted via SSE:
+    - token: LLM streaming tokens
+    - tool_call: Function tool invoked
+    - tool_result: Function tool completed
+    - web_search: Web search status
+    - annotations: url_citation list (start_index, end_index, url, title)
     - done: Stream complete
     - error: An error occurred
     """
@@ -35,6 +34,7 @@ async def send_message(
             user_id=request.user_id,
             input_text=request.input,
             char_info=request.char_info,
+            selected_build_id=request.selected_build_id,
         ),
         media_type="text/event-stream",
         headers={

@@ -4,9 +4,14 @@ Loads configuration from environment variables.
 """
 
 from functools import lru_cache
+from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+ENV_FILE_PATH = REPO_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -16,7 +21,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE_PATH),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -28,19 +33,13 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-4.1"
     openai_main_model: str = "gpt-5.2"
-    openai_explorer_model: str = "gpt-5.2"
-    openai_classifier_model: str = "gpt-5-nano"
-    openai_explorer_reasoning_effort: str = "medium"
-    openai_explorer_reasoning_summary: str = "auto"
+    openai_reasoning_effort: str = "none"  # none | low | medium | high
+    openai_search_context_size: str = "medium"  # low | medium | high
 
-    # HelixDB
-    helix_local: bool = True
-    helix_port: int = 6969
-    helix_api_endpoint: str = ""
-    helix_api_key: str = ""
-    helix_verbose: bool = False
+    # Blizzard API
+    blizzard_client_id: str = ""
+    blizzard_client_secret: str = ""
 
     # App
     app_env: str = "development"
@@ -74,4 +73,6 @@ def get_settings() -> Settings:
     Get cached settings instance.
     Uses lru_cache to avoid reading env vars on every call.
     """
+    # Ensure non-pydantic envs (e.g. LANGSMITH_*) are available to third-party SDKs.
+    load_dotenv(dotenv_path=ENV_FILE_PATH, override=False)
     return Settings()

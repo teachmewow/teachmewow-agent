@@ -2,33 +2,20 @@
 Agent tools module.
 """
 
-from langchain_core.tools import BaseTool
-
-from .build_lookup import build_lookup
-# from .build_reasoning_context import build_reasoning_context
-# from .build_rag_lookup import build_rag_lookup
-from .list_builds import list_builds
-
-
-def get_all_tools() -> list[BaseTool]:
-    """
-    Get all available tools for the agent.
-
-    Returns:
-        List of tool instances
-    """
-    return [
-        list_builds,
-        build_lookup,
-        # build_rag_lookup,
-        # build_reasoning_context,
-    ]
-
+from .build_lookup import BUILD_LOOKUP_SCHEMA, BuildLookupHandler, execute_build_lookup
+from .list_builds import LIST_BUILDS_SCHEMA, ListBuildsHandler, execute_list_builds
+from .registry import ToolContext, ToolHandler, ToolRegistry
+from .tool_executor import ToolExecutor
 
 __all__ = [
-    "list_builds",
-    "build_lookup",
-    # "build_rag_lookup",
-    # "build_reasoning_context",
-    "get_all_tools",
+    "execute_list_builds",
+    "execute_build_lookup",
+    "LIST_BUILDS_SCHEMA",
+    "BUILD_LOOKUP_SCHEMA",
+    "ListBuildsHandler",
+    "BuildLookupHandler",
+    "ToolContext",
+    "ToolHandler",
+    "ToolRegistry",
+    "ToolExecutor",
 ]

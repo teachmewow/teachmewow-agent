@@ -5,10 +5,15 @@ FastAPI dependencies for dependency injection.
 from typing import Annotated
 
 from fastapi import Depends, Request
-from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.services import ChatService, ThreadService, create_chat_service, create_thread_service
+from app.application.agent.orchestrator import Orchestrator
+from app.application.services import (
+    ChatService,
+    ThreadService,
+    create_chat_service,
+    create_thread_service,
+)
 from app.infrastructure.database import (
     MessageRepositoryImpl,
     ThreadRepositoryImpl,
@@ -17,18 +22,11 @@ from app.infrastructure.database import (
 
 
 async def get_db_session() -> AsyncSession:
-    """
-    Get a database session.
-
-    Yields:
-        AsyncSession for database operations
-    """
+    """Get a database session."""
     factory = get_session_factory()
     async with factory() as session:
         try:
             yield session
-            # Streaming handlers may swallow exceptions and emit SSE error events.
-            # If flush failed earlier, SQLAlchemy session becomes inactive and must be rolled back.
             if not session.sync_session.is_active:
                 await session.rollback()
                 return
@@ -38,17 +36,9 @@ async def get_db_session() -> AsyncSession:
             raise
 
 
-def get_graph(request: Request) -> CompiledStateGraph:
-    """
-    Get the compiled graph from app state.
-
-    Args:
-        request: FastAPI request object
-
-    Returns:
-        Compiled LangGraph from app.state
-    """
-    return request.app.state.graph
+def get_orchestrator(request: Request) -> Orchestrator:
+    """Get the orchestrator from app state."""
+    return request.app.state.orchestrator
 
 
 def get_message_repository(
@@ -66,13 +56,13 @@ def get_thread_repository(
 
 
 def get_chat_service(
-    graph: Annotated[CompiledStateGraph, Depends(get_graph)],
+    orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
     message_repo: Annotated[MessageRepositoryImpl, Depends(get_message_repository)],
     thread_repo: Annotated[ThreadRepositoryImpl, Depends(get_thread_repository)],
 ) -> ChatService:
     """Get chat service with all dependencies."""
     return create_chat_service(
-        graph=graph,
+        orchestrator=orchestrator,
         message_repository=message_repo,
         thread_repository=thread_repo,
     )
@@ -91,6 +81,5 @@ def get_thread_service(
 
 # Type aliases for cleaner route signatures
 DBSession = Annotated[AsyncSession, Depends(get_db_session)]
-Graph = Annotated[CompiledStateGraph, Depends(get_graph)]
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 ThreadServiceDep = Annotated[ThreadService, Depends(get_thread_service)]

@@ -11,7 +11,7 @@ from .database import (
     get_session,
     init_database,
 )
-from .llm import LLMClient
+from .llm import LLMProvider, OpenAIProvider
 
 __all__ = [
     # Config
@@ -25,5 +25,6 @@ __all__ = [
     "MessageRepositoryImpl",
     "ThreadRepositoryImpl",
     # LLM
-    "LLMClient",
+    "LLMProvider",
+    "OpenAIProvider",
 ]

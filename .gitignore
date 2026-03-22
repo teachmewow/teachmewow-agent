@@ -28,3 +28,6 @@ build/
 # IDE
 .idea/
 .vscode/
+
+# Ephemeral scrape output (regenerated each patch)
+builds_ingestion/builds/
