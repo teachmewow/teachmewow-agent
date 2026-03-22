@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
-
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 _BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -70,7 +69,7 @@ def decode_import_code_nodes(
 
 
 def _read_loadout_content(
-    stream: "_ImportDataStream",
+    stream: _ImportDataStream,
     node_meta: list[tuple[int, int]],
     serialization_version: int,
     debug: bool = False,

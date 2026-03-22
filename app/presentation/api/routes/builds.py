@@ -1,6 +1,4 @@
-"""
-Build API routes.
-"""
+"""Build API routes."""
 
 import json
 import logging
@@ -11,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.application.agent.tools.build_lookup import fetch_build_view_by_id
+from app.infrastructure.blizzard.client import BlizzardClient
 from app.infrastructure.ingestion.build_normalizer import normalize_build, upsert_builds
 from app.presentation.schemas.builds import IngestPayload, IngestResult
 from app.presentation.schemas.chat import CharInfoRequest
@@ -77,33 +76,35 @@ async def get_build_by_id(
 
 
 async def _process_ingest(payload: IngestPayload) -> IngestResult:
+    """Normalize all builds sharing a single BlizzardClient (connection pool + cache)."""
     errors: list[str] = []
     all_normalized: list[dict] = []
 
-    for spec_entry in payload.specs:
-        defaults = {
-            "wow_class": spec_entry.wow_class,
-            "wow_spec": spec_entry.wow_spec,
-            "wow_role": spec_entry.wow_role,
-            "source": spec_entry.source,
-            "patch": payload.patch,
-        }
-        for build_entry in spec_entry.builds:
-            build_dict = {
-                "id": build_entry.id,
-                "environment": build_entry.environment,
-                "scenario": build_entry.scenario,
-                "hero_talent": build_entry.hero_talent,
-                "import_code": build_entry.import_code,
-                "build_mode": build_entry.build_mode or build_entry.scenario,
+    async with BlizzardClient() as client:
+        for spec_entry in payload.specs:
+            defaults = {
+                "wow_class": spec_entry.wow_class,
+                "wow_spec": spec_entry.wow_spec,
+                "wow_role": spec_entry.wow_role,
+                "source": spec_entry.source,
+                "patch": payload.patch,
             }
-            try:
-                normalized = normalize_build(build_dict, defaults)
-                all_normalized.append(normalized)
-            except Exception as exc:
-                msg = f"Failed to normalize build {build_entry.id}: {exc}"
-                logger.warning(msg)
-                errors.append(msg)
+            for build_entry in spec_entry.builds:
+                build_dict = {
+                    "id": build_entry.id,
+                    "environment": build_entry.environment,
+                    "scenario": build_entry.scenario,
+                    "hero_talent": build_entry.hero_talent,
+                    "import_code": build_entry.import_code,
+                    "build_mode": build_entry.build_mode or build_entry.scenario,
+                }
+                try:
+                    normalized = await normalize_build(build_dict, defaults, client)
+                    all_normalized.append(normalized)
+                except Exception as exc:
+                    msg = f"Failed to normalize build {build_entry.id}: {exc}"
+                    logger.warning(msg)
+                    errors.append(msg)
 
     ingested = 0
     if all_normalized:
@@ -135,18 +136,16 @@ async def ingest_builds(payload: IngestPayload) -> IngestResult:
 
 @router.post("/ingest/yaml")
 async def ingest_builds_yaml(request: Request) -> IngestResult:
-    """
-    Same as /ingest but accepts YAML body (Content-Type: text/yaml).
-    """
+    """Same as /ingest but accepts YAML body (Content-Type: text/yaml)."""
     body = await request.body()
     try:
         data = yaml.safe_load(body)
     except yaml.YAMLError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid YAML: {exc}")
+        raise HTTPException(status_code=400, detail=f"Invalid YAML: {exc}") from exc
     try:
         payload = IngestPayload(**data)
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Validation error: {exc}")
+        raise HTTPException(status_code=422, detail=f"Validation error: {exc}") from exc
     return await _process_ingest(payload)
 
 
@@ -171,58 +170,59 @@ async def _process_ingest_stream(payload: IngestPayload) -> AsyncGenerator[str, 
 
     yield _sse_event({"type": "start", "total": total})
 
-    for spec_entry in payload.specs:
-        defaults = {
-            "wow_class": spec_entry.wow_class,
-            "wow_spec": spec_entry.wow_spec,
-            "wow_role": spec_entry.wow_role,
-            "source": spec_entry.source,
-            "patch": payload.patch,
-        }
-        for build_entry in spec_entry.builds:
-            current += 1
-            pct = round(current / total * 100) if total else 100
-            yield _sse_event({
-                "type": "progress",
-                "current": current,
-                "total": total,
-                "pct": pct,
-                "build_id": build_entry.id,
-                "status": "normalizing",
-            })
-
-            build_dict = {
-                "id": build_entry.id,
-                "environment": build_entry.environment,
-                "scenario": build_entry.scenario,
-                "hero_talent": build_entry.hero_talent,
-                "import_code": build_entry.import_code,
-                "build_mode": build_entry.build_mode or build_entry.scenario,
+    async with BlizzardClient() as client:
+        for spec_entry in payload.specs:
+            defaults = {
+                "wow_class": spec_entry.wow_class,
+                "wow_spec": spec_entry.wow_spec,
+                "wow_role": spec_entry.wow_role,
+                "source": spec_entry.source,
+                "patch": payload.patch,
             }
-            try:
-                normalized = normalize_build(build_dict, defaults)
-                all_normalized.append(normalized)
+            for build_entry in spec_entry.builds:
+                current += 1
+                pct = round(current / total * 100) if total else 100
                 yield _sse_event({
                     "type": "progress",
                     "current": current,
                     "total": total,
                     "pct": pct,
                     "build_id": build_entry.id,
-                    "status": "done",
+                    "status": "normalizing",
                 })
-            except Exception as exc:
-                msg = f"Failed to normalize build {build_entry.id}: {exc}"
-                logger.warning(msg)
-                errors.append(msg)
-                yield _sse_event({
-                    "type": "progress",
-                    "current": current,
-                    "total": total,
-                    "pct": pct,
-                    "build_id": build_entry.id,
-                    "status": "error",
-                    "error": msg,
-                })
+
+                build_dict = {
+                    "id": build_entry.id,
+                    "environment": build_entry.environment,
+                    "scenario": build_entry.scenario,
+                    "hero_talent": build_entry.hero_talent,
+                    "import_code": build_entry.import_code,
+                    "build_mode": build_entry.build_mode or build_entry.scenario,
+                }
+                try:
+                    normalized = await normalize_build(build_dict, defaults, client)
+                    all_normalized.append(normalized)
+                    yield _sse_event({
+                        "type": "progress",
+                        "current": current,
+                        "total": total,
+                        "pct": pct,
+                        "build_id": build_entry.id,
+                        "status": "done",
+                    })
+                except Exception as exc:
+                    msg = f"Failed to normalize build {build_entry.id}: {exc}"
+                    logger.warning(msg)
+                    errors.append(msg)
+                    yield _sse_event({
+                        "type": "progress",
+                        "current": current,
+                        "total": total,
+                        "pct": pct,
+                        "build_id": build_entry.id,
+                        "status": "error",
+                        "error": msg,
+                    })
 
     if all_normalized:
         yield _sse_event({"type": "upserting", "count": len(all_normalized)})
@@ -257,11 +257,11 @@ async def ingest_builds_yaml_stream(request: Request) -> StreamingResponse:
     try:
         data = yaml.safe_load(body)
     except yaml.YAMLError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid YAML: {exc}")
+        raise HTTPException(status_code=400, detail=f"Invalid YAML: {exc}") from exc
     try:
         payload = IngestPayload(**data)
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Validation error: {exc}")
+        raise HTTPException(status_code=422, detail=f"Validation error: {exc}") from exc
     return StreamingResponse(
         _process_ingest_stream(payload),
         media_type="text/event-stream",

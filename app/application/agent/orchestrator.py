@@ -168,8 +168,13 @@ class Orchestrator:
                 for fc in function_calls:
                     args = json.loads(fc.arguments) if fc.arguments else {}
 
-                    result = await tool_executor.execute(fc.name, args)
-                    _maybe_update_build_context(result, tool_executor)
+                    is_error = False
+                    try:
+                        result = await tool_executor.execute(fc.name, args)
+                        _maybe_update_build_context(result, tool_executor)
+                    except Exception as tool_exc:
+                        result = json.dumps({"error": str(tool_exc)})
+                        is_error = True
 
                     # SSE uses item id (same as tool_call event)
                     # Send full result for list_builds (frontend needs it for cards)
@@ -178,6 +183,7 @@ class Orchestrator:
                         "name": fc.name,
                         "call_id": fc.id,
                         "result": sse_result,
+                        "is_error": is_error,
                     })
 
                     # Responses API uses call_id for matching
@@ -193,16 +199,36 @@ class Orchestrator:
                         "output": result,
                     })
 
-            yield _sse("error", {"message": "Max tool iterations reached."})
+            yield _sse("error", {"code": "MAX_ITERATIONS", "message": "Max tool iterations reached."})
 
         except Exception as exc:
             traceback.print_exc()
-            yield _sse("error", {"message": str(exc)})
+            code, message = _classify_error(exc)
+            yield _sse("error", {"code": code, "message": message})
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _classify_error(exc: Exception) -> tuple[str, str]:
+    """Classify an exception into a semantic error code + raw message.
+
+    The frontend uses the code to render a localised message via i18n.
+    """
+    from openai import APIStatusError, APITimeoutError
+
+    msg = str(exc)
+    if isinstance(exc, APITimeoutError):
+        return "TIMEOUT", msg
+    if isinstance(exc, APIStatusError):
+        status = exc.status_code
+        if status == 429:
+            return "RATE_LIMITED", msg
+        if status in (500, 502, 503):
+            return "SERVICE_UNAVAILABLE", msg
+    return "UNKNOWN", msg
+
 
 def _sse(event: str, data: dict) -> str:
     payload = json.dumps({"event": event, "data": data}, ensure_ascii=True)

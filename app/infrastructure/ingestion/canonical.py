@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 CANONICAL_ENVIRONMENTS = frozenset({"raid", "mythic_plus", "delves"})
 CANONICAL_BUILD_MODES = frozenset({"single", "aoe"})
 CANONICAL_SCENARIOS = frozenset({"single", "aoe"})
