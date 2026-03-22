@@ -187,25 +187,45 @@ class BlizzardClient:
 
     # -- Low-level API methods (cached) --------------------------------------
 
+    _RETRY_ATTEMPTS: int = 3
+    _RETRY_BACKOFF: tuple[float, ...] = (1.0, 3.0, 5.0)
+
     async def _get_json(self, path: str, *, ttl: float | None = None) -> dict:
-        """GET a Blizzard API path with Bearer auth and caching."""
+        """GET a Blizzard API path with Bearer auth, caching, and retry on 5xx."""
         cached = self._cache.get(path)
         if cached is not None:
             return cached
 
-        token = await self.get_access_token()
-        response = await self._http.get(
-            path,
-            params={"namespace": self._namespace, "locale": self.locale},
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        if response.status_code == 404:
-            return {}
-        response.raise_for_status()
+        last_exc: Exception | None = None
+        for attempt in range(self._RETRY_ATTEMPTS):
+            token = await self.get_access_token()
+            response = await self._http.get(
+                path,
+                params={"namespace": self._namespace, "locale": self.locale},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if response.status_code == 404:
+                return {}
+            if response.status_code >= 500:
+                wait = self._RETRY_BACKOFF[min(attempt, len(self._RETRY_BACKOFF) - 1)]
+                logger.warning(
+                    "Blizzard API %s returned %d (attempt %d/%d), retrying in %.1fs",
+                    path, response.status_code, attempt + 1, self._RETRY_ATTEMPTS, wait,
+                )
+                last_exc = httpx.HTTPStatusError(
+                    f"Blizzard API {response.status_code} for {path}",
+                    request=response.request,
+                    response=response,
+                )
+                await asyncio.sleep(wait)
+                continue
+            response.raise_for_status()
 
-        data: dict = response.json()
-        self._cache.set(path, data, ttl)
-        return data
+            data: dict = response.json()
+            self._cache.set(path, data, ttl)
+            return data
+
+        raise last_exc or RuntimeError(f"Blizzard API failed after {self._RETRY_ATTEMPTS} retries: {path}")
 
     async def fetch_playable_spec_index(self) -> dict:
         return await self._get_json("/data/wow/playable-specialization/index")

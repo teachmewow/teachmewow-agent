@@ -102,7 +102,8 @@ async def _process_ingest(payload: IngestPayload) -> IngestResult:
                     normalized = await normalize_build(build_dict, defaults, client)
                     all_normalized.append(normalized)
                 except Exception as exc:
-                    msg = f"Failed to normalize build {build_entry.id}: {exc}"
+                    detail = str(exc) or f"{type(exc).__name__} (no message)"
+                    msg = f"Failed to normalize build {build_entry.id}: {detail}"
                     logger.warning(msg)
                     errors.append(msg)
 
