@@ -6,8 +6,12 @@ description: List available WoW builds when no active build is selected.
 # Builds Listing
 
 ## When to trigger
-- The conversation has NO active build yet AND the user asks about builds, talents, rotation, or anything class/spec-related.
+- The conversation has NO active build yet (system prompt shows "No build selected yet") AND the user asks about builds, talents, rotation, or anything class/spec-related.
 - NOT when the user is just greeting or making small talk.
+
+## When NOT to trigger (CRITICAL)
+- If the system prompt contains "Active build" — the user has ALREADY selected a build. DO NOT call `list_builds`. Use the build-coaching skill instead.
+- If `list_builds` was already called in this conversation and builds were shown, do NOT call it again unless the user explicitly asks to see builds again (e.g. "show me builds again", "list builds").
 
 ## Flow
 1. Call `list_builds` once with no filters (returns all builds for the character's class/spec).

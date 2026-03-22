@@ -41,15 +41,16 @@ Class: {wow_class} | Spec: {wow_spec} | Role: {wow_role}"""
 
 _BUILD_CONTEXT = """\
 
-## Active build
+## Active build (SELECTED BY THE USER)
 ID: {build_id} | Hero talent: {hero_talent} | Environment: {environment}
 Source guide: {source}
-When coaching, search within the source guide's domain for rotation/priority info."""
+The user has already selected this build. DO NOT call `list_builds` again — the user does NOT need to see the build list.
+Proceed directly with coaching: use `web_search` to find rotation/priority info from the source guide's domain, then provide actionable advice."""
 
 _NO_BUILD_CONTEXT = """\
 
 ## Build status
-No build selected yet. When the user asks about builds, talents, or rotation, call `list_builds` directly."""
+No build selected yet. When the user asks about builds, talents, or rotation, call `list_builds` to show available options."""
 
 
 def _build_skills_section(skill_contents: list[dict[str, str]]) -> str:

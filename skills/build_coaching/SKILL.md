@@ -5,6 +5,11 @@ description: Coach on rotation, priorities, cooldowns, openers, and optimization
 
 # Build Coaching
 
+## When to trigger
+- The system prompt contains an "Active build" section — this means the user selected a build from the UI.
+- The user asks anything about how to play, rotation, priorities, talents, cooldowns, openers, or gameplay.
+- This skill takes priority over builds-listing when an active build exists.
+
 ## Prerequisites
 An active build MUST be selected (check system prompt for "Active build" section).
 If no active build, tell the user to select one first.
