@@ -19,7 +19,18 @@ domain/       → Entities, value objects, repository protocols
 infrastructure/ → Database, LLM provider, skills loader, config
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
+## How to add a new tool
+
+1. Create handler class in `app/application/agent/tools/` implementing `ToolHandler` protocol
+2. Define `name`, `schema` (JSON Schema dict), and `async execute(args, ctx) -> dict`
+3. Register in `OrchestratorBuilder._build_tool_registry()`
+4. That's it — the orchestrator discovers it automatically
+
+## How to add a new skill
+
+1. Create `skills/<skill_name>/SKILL.md` with YAML frontmatter (name, description)
+2. Write the skill instructions in markdown
+3. It's auto-loaded at startup and injected into the system prompt
 
 ## Key patterns
 
@@ -27,7 +38,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
 `app/application/agent/orchestrator_builder.py` — assembles the Orchestrator with all dependencies (provider, tool registry, tools config, skills). Called once in `lifespan.py`.
 
 ### ToolRegistry
-`app/application/agent/tools/registry.py` — Pydantic-based registry mapping tool names to typed handlers. Each handler implements `ToolHandler` protocol with `name`, `schema`, and `execute()`. No more if/elif dispatch.
+`app/application/agent/tools/registry.py` — Pydantic-based registry mapping tool names to typed handlers. Each handler implements `ToolHandler` protocol with `name`, `schema`, and `execute()`. No if/elif dispatch.
 
 ### Typed event stream
 `app/application/agent/orchestrator.py` — uses `match`/`case` on OpenAI SDK types (`ResponseTextDeltaEvent`, `ResponseFunctionToolCall`, etc.) instead of `getattr` chains.
@@ -38,23 +49,20 @@ Skills live in `/skills/` as SKILL.md files. They're loaded at startup and mount
 ## Running
 
 ```bash
-# Ensure .env has OPENAI_API_KEY and DATABASE_URL
 uvicorn app.main:app --reload --port 8000
-
-# Import check
-python -c "from app.main import app"
+python -c "from app.main import app"  # import check
+ruff check app/                        # lint
 ```
 
 ## Common pitfalls
 
 - **`_normalize_char` duplication** — use `app.application.agent.tools._char_utils` for shared normalization.
-- **Tool schemas** — defined as class attributes on handler classes (e.g. `ListBuildsHandler.schema`), not separate constants. The `LIST_BUILDS_SCHEMA` / `BUILD_LOOKUP_SCHEMA` aliases exist for backward compat.
-- **Reasoning effort** — set via `OPENAI_REASONING_EFFORT` env var. Value "none" means no reasoning block; "low"/"medium"/"high" are valid.
+- **Tool schemas** — defined as class attributes on handler classes (e.g. `ListBuildsHandler.schema`), not separate constants.
+- **Reasoning effort** — set via `OPENAI_REASONING_EFFORT` env var. Value "none" means no reasoning block.
 - **Web search filters** — configured in `OrchestratorBuilder._build_tools_config()`, not in lifespan.
 
 ### Build Ingestion
 - `app/infrastructure/blizzard/` — Blizzard API client + talent import code decoder
 - `app/infrastructure/ingestion/` — Build normalization and upsert
-- `POST /builds/ingest` — Accepts JSON with builds, processes via Blizzard API, persists in Postgres
-- `POST /builds/ingest/yaml` — Same, but accepts YAML
+- `POST /builds/ingest/yaml` — Accepts YAML, decodes via Blizzard API, persists in Postgres
 - Env vars: `BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET`
