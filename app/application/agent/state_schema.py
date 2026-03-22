@@ -28,13 +28,3 @@ class BuildInfo(BaseModel):
     scenario: str | None = None
     source: str | None = None
     patch: str | None = None
-
-
-class StreamEvent(BaseModel):
-    """
-    Event emitted during streaming.
-    Used to communicate with the frontend via SSE.
-    """
-
-    event: str
-    data: dict = Field(default_factory=dict)

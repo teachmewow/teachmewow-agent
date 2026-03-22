@@ -16,6 +16,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from langsmith import traceable
+from openai import APIStatusError, APITimeoutError
 from openai.types.responses import (
     ResponseFunctionCallArgumentsDeltaEvent,
     ResponseFunctionToolCall,
@@ -31,6 +32,17 @@ from openai.types.responses.response_output_text import AnnotationURLCitation
 
 from app.infrastructure.llm.provider import LLMProvider
 
+from .sse_events import (
+    AnnotationsEvent,
+    DoneEvent,
+    ErrorEvent,
+    SkillActiveEvent,
+    SSEEvent,
+    TokenEvent,
+    ToolCallEvent,
+    ToolResultEvent,
+    WebSearchEvent,
+)
 from .tools.registry import ToolRegistry
 from .tools.tool_executor import ToolExecutor
 
@@ -73,9 +85,7 @@ class Orchestrator:
         char_info: dict | None = None,
         build_info: dict | None = None,
     ) -> AsyncGenerator[str, None]:
-        """
-        Run the orchestrator loop, yielding SSE event strings.
-        """
+        """Run the orchestrator loop, yielding SSE event strings."""
         tool_executor = ToolExecutor(
             registry=self._tool_registry,
             char_info=char_info,
@@ -87,18 +97,9 @@ class Orchestrator:
             *messages,
         ]
 
-        max_iterations = 15
-        iteration = 0
-
         try:
-            while iteration < max_iterations:
-                iteration += 1
-
-                accumulated_text = ""
-                output_items: list[Any] = []
-
-                # Track streaming fn calls: item_id -> args_buffer
-                streaming_fn_calls: dict[str, dict] = {}
+            for _ in range(15):
+                acc = _StreamAccumulator()
 
                 response = await self._provider.create_response(
                     model=self._model,
@@ -109,102 +110,134 @@ class Orchestrator:
                 )
 
                 async for event in response:
-                    match event:
-                        # -- text delta tokens --
-                        case ResponseTextDeltaEvent(delta=delta) if delta:
-                            accumulated_text += delta
-                            yield _sse("token", {"text": delta})
+                    if sse := acc.handle_event(event):
+                        yield sse.to_sse()
 
-                        # -- function call arguments streaming --
-                        case ResponseFunctionCallArgumentsDeltaEvent(
-                            item_id=item_id, delta=delta,
-                        ) if item_id in streaming_fn_calls:
-                            streaming_fn_calls[item_id]["args"] += delta
-
-                        # -- output item added (function_call start) --
-                        case ResponseOutputItemAddedEvent(item=item) if isinstance(
-                            item, ResponseFunctionToolCall
-                        ):
-                            streaming_fn_calls[item.id] = {
-                                "name": item.name,
-                                "args": "",
-                            }
-                            yield _sse("tool_call", {
-                                "name": item.name,
-                                "call_id": item.id,
-                            })
-
-                        # -- output item done (complete item) --
-                        case ResponseOutputItemDoneEvent(item=item):
-                            output_items.append(item)
-
-                        # -- web search events --
-                        case ResponseWebSearchCallInProgressEvent() | ResponseWebSearchCallSearchingEvent():
-                            yield _sse("web_search", {"status": "searching"})
-                        case ResponseWebSearchCallCompletedEvent():
-                            yield _sse("web_search", {"status": "completed"})
-
-                        # -- shell / skill events (string-based fallback) --
-                        case _ if _is_shell_event(event, "in_progress"):
-                            yield _sse("skill_active", {"status": "running"})
-                        case _ if _is_shell_event(event, "completed"):
-                            yield _sse("skill_active", {"status": "completed"})
-
-                # -- Finished streaming this response turn --
-
-                function_calls = [
-                    item for item in output_items
-                    if isinstance(item, ResponseFunctionToolCall)
-                ]
-
-                if not function_calls:
-                    annotations = _extract_annotations(output_items)
-                    if annotations:
-                        yield _sse("annotations", {"citations": annotations})
-                    yield _sse("done", {"text": accumulated_text})
+                if not acc.function_calls:
+                    if annotations := _extract_annotations(acc.output_items):
+                        yield AnnotationsEvent(citations=annotations).to_sse()
+                    yield DoneEvent(text=acc.accumulated_text).to_sse()
                     return
 
-                # Execute function calls
-                for fc in function_calls:
-                    args = json.loads(fc.arguments) if fc.arguments else {}
+                async for sse in self._execute_tools(
+                    acc.function_calls, tool_executor, input_messages,
+                ):
+                    yield sse.to_sse()
 
-                    is_error = False
-                    try:
-                        result = await tool_executor.execute(fc.name, args)
-                        _maybe_update_build_context(result, tool_executor)
-                    except Exception as tool_exc:
-                        result = json.dumps({"error": str(tool_exc)})
-                        is_error = True
-
-                    # SSE uses item id (same as tool_call event)
-                    # Send full result for list_builds (frontend needs it for cards)
-                    sse_result = result if fc.name == "list_builds" else result[:500]
-                    yield _sse("tool_result", {
-                        "name": fc.name,
-                        "call_id": fc.id,
-                        "result": sse_result,
-                        "is_error": is_error,
-                    })
-
-                    # Responses API uses call_id for matching
-                    input_messages.append({
-                        "type": "function_call",
-                        "call_id": fc.call_id,
-                        "name": fc.name,
-                        "arguments": fc.arguments,
-                    })
-                    input_messages.append({
-                        "type": "function_call_output",
-                        "call_id": fc.call_id,
-                        "output": result,
-                    })
-
-            yield _sse("error", {"code": "MAX_ITERATIONS", "message": "Max tool iterations reached."})
+            yield ErrorEvent(
+                code="MAX_ITERATIONS",
+                message="Max tool iterations reached.",
+            ).to_sse()
 
         except Exception as exc:
             traceback.print_exc()
             code, message = _classify_error(exc)
-            yield _sse("error", {"code": code, "message": message})
+            yield ErrorEvent(code=code, message=message).to_sse()
+
+    async def _execute_tools(
+        self,
+        function_calls: list[ResponseFunctionToolCall],
+        tool_executor: ToolExecutor,
+        input_messages: list[dict[str, Any]],
+    ) -> AsyncGenerator[SSEEvent, None]:
+        """Execute function calls and yield SSE events for each result."""
+        for fc in function_calls:
+            args = json.loads(fc.arguments) if fc.arguments else {}
+
+            is_error = False
+            try:
+                result = await tool_executor.execute(fc.name, args)
+                _maybe_update_build_context(result, tool_executor)
+            except Exception as tool_exc:
+                result = json.dumps({"error": str(tool_exc)})
+                is_error = True
+
+            # Send full result for list_builds (frontend needs it for cards)
+            sse_result = result if fc.name == "list_builds" else result[:500]
+            yield ToolResultEvent(
+                name=fc.name,
+                call_id=fc.id,
+                result=sse_result,
+                is_error=is_error,
+            )
+
+            # Responses API uses call_id for matching
+            input_messages.append({
+                "type": "function_call",
+                "call_id": fc.call_id,
+                "name": fc.name,
+                "arguments": fc.arguments,
+            })
+            input_messages.append({
+                "type": "function_call_output",
+                "call_id": fc.call_id,
+                "output": result,
+            })
+
+
+# ---------------------------------------------------------------------------
+# Stream accumulator — tracks state for one API response turn
+# ---------------------------------------------------------------------------
+
+class _StreamAccumulator:
+    """Maps OpenAI SDK events to typed SSE events while tracking iteration state."""
+
+    def __init__(self) -> None:
+        self.accumulated_text: str = ""
+        self.output_items: list[Any] = []
+        self.streaming_fn_calls: dict[str, dict] = {}
+
+    def handle_event(self, event: object) -> SSEEvent | None:
+        """Process one SDK event; return an SSE event to yield, or None."""
+        match event:
+            # -- text delta tokens --
+            case ResponseTextDeltaEvent(delta=delta) if delta:
+                self.accumulated_text += delta
+                return TokenEvent(text=delta)
+
+            # -- function call arguments streaming --
+            case ResponseFunctionCallArgumentsDeltaEvent(
+                item_id=item_id, delta=delta,
+            ) if item_id in self.streaming_fn_calls:
+                self.streaming_fn_calls[item_id]["args"] += delta
+                return None
+
+            # -- output item added (function_call start) --
+            case ResponseOutputItemAddedEvent(item=item) if isinstance(
+                item, ResponseFunctionToolCall,
+            ):
+                self.streaming_fn_calls[item.id] = {
+                    "name": item.name,
+                    "args": "",
+                }
+                return ToolCallEvent(name=item.name, call_id=item.id)
+
+            # -- output item done (complete item) --
+            case ResponseOutputItemDoneEvent(item=item):
+                self.output_items.append(item)
+                return None
+
+            # -- web search events --
+            case ResponseWebSearchCallInProgressEvent() | ResponseWebSearchCallSearchingEvent():
+                return WebSearchEvent(status="searching")
+            case ResponseWebSearchCallCompletedEvent():
+                return WebSearchEvent(status="completed")
+
+            # -- shell / skill events (string-based fallback) --
+            case _ if _is_shell_event(event, "in_progress"):
+                return SkillActiveEvent(status="running")
+            case _ if _is_shell_event(event, "completed"):
+                return SkillActiveEvent(status="completed")
+
+            case _:
+                return None
+
+    @property
+    def function_calls(self) -> list[ResponseFunctionToolCall]:
+        return [
+            item for item in self.output_items
+            if isinstance(item, ResponseFunctionToolCall)
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -216,8 +249,6 @@ def _classify_error(exc: Exception) -> tuple[str, str]:
 
     The frontend uses the code to render a localised message via i18n.
     """
-    from openai import APIStatusError, APITimeoutError
-
     msg = str(exc)
     if isinstance(exc, APITimeoutError):
         return "TIMEOUT", msg
@@ -228,11 +259,6 @@ def _classify_error(exc: Exception) -> tuple[str, str]:
         if status in (500, 502, 503):
             return "SERVICE_UNAVAILABLE", msg
     return "UNKNOWN", msg
-
-
-def _sse(event: str, data: dict) -> str:
-    payload = json.dumps({"event": event, "data": data}, ensure_ascii=True)
-    return f"data: {payload}\n\n"
 
 
 def _is_shell_event(event: object, suffix: str) -> bool:
