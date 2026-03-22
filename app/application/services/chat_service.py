@@ -4,8 +4,9 @@ Chat service — orchestrates agent execution and message persistence.
 
 import json
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from datetime import datetime, timezone
+from typing import Any
 
 from app.domain import Message, MessageRole, Thread, WowClass, WowSpec
 from app.domain.repositories import MessageRepository, ThreadRepository
@@ -31,10 +32,12 @@ class ChatService:
         orchestrator: Orchestrator,
         message_repository: MessageRepository,
         thread_repository: ThreadRepository,
+        session_commit: Any = None,
     ):
         self.orchestrator = orchestrator
         self.message_repository = message_repository
         self.thread_repository = thread_repository
+        self._session_commit = session_commit
 
     async def process_message(
         self,
@@ -71,6 +74,12 @@ class ChatService:
             skill_contents=self.orchestrator.skill_contents,
         )
         build_dict = build_info.model_dump(mode="json") if build_info else None
+
+        # Commit DB writes (thread, user message, build context) before the
+        # long-running streaming phase. Without this, the open transaction holds
+        # row locks that block subsequent requests on the same thread.
+        if self._session_commit:
+            await self._session_commit()
 
         async for event_str in self._stream_and_persist(
             thread_id, messages, system_prompt, char_dict, build_dict,
@@ -205,11 +214,13 @@ def create_chat_service(
     orchestrator: Orchestrator,
     message_repository: MessageRepository,
     thread_repository: ThreadRepository,
+    session_commit: Callable[[], Awaitable[None]] | None = None,
 ) -> ChatService:
     return ChatService(
         orchestrator=orchestrator,
         message_repository=message_repository,
         thread_repository=thread_repository,
+        session_commit=session_commit,
     )
 
 

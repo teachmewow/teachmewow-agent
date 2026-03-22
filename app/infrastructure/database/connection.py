@@ -65,7 +65,7 @@ def create_engine() -> AsyncEngine:
     
     return create_async_engine(
         url,
-        echo=get_settings().debug,
+        echo=get_settings().sql_echo,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,

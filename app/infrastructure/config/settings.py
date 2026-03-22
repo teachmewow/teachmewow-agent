@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     # App
     app_env: str = "development"
     debug: bool = True
+    sql_echo: bool = False
 
     @field_validator("debug", mode="before")
     @classmethod

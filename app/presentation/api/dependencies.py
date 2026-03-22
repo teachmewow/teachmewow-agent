@@ -57,6 +57,7 @@ def get_thread_repository(
 
 def get_chat_service(
     orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
     message_repo: Annotated[MessageRepositoryImpl, Depends(get_message_repository)],
     thread_repo: Annotated[ThreadRepositoryImpl, Depends(get_thread_repository)],
 ) -> ChatService:
@@ -65,6 +66,7 @@ def get_chat_service(
         orchestrator=orchestrator,
         message_repository=message_repo,
         thread_repository=thread_repo,
+        session_commit=session.commit,
     )
 
 
