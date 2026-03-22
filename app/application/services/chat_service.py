@@ -179,15 +179,12 @@ class ChatService:
             yield event_str
 
             try:
-                parsed = json.loads(event_str.removeprefix("data: ").strip())
-                event_name = parsed.get("event")
-                data = parsed.get("data", {})
-
+                event_name, data = _parse_sse_frame(event_str)
                 if event_name == "annotations":
                     annotations = data.get("citations", [])
                 elif event_name == "done":
                     done_text = data.get("text", "")
-            except (json.JSONDecodeError, AttributeError):
+            except (json.JSONDecodeError, AttributeError, ValueError):
                 pass
 
         if done_text:
@@ -214,5 +211,19 @@ def create_chat_service(
         message_repository=message_repository,
         thread_repository=thread_repository,
     )
+
+
+def _parse_sse_frame(frame: str) -> tuple[str, dict]:
+    """Parse a standard SSE frame (event: ...\\ndata: ...) into (event_name, data_dict)."""
+    event_name = ""
+    data_str = ""
+    for line in frame.strip().splitlines():
+        if line.startswith("event:"):
+            event_name = line[6:].strip()
+        elif line.startswith("data:"):
+            data_str = line[5:].strip()
+    if not event_name or not data_str:
+        raise ValueError("Incomplete SSE frame")
+    return event_name, json.loads(data_str)
 
 

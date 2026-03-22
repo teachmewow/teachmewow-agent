@@ -18,12 +18,9 @@ class SSEEvent(BaseModel):
     event: str
 
     def to_sse(self) -> str:
-        """Serialize to SSE wire format: `data: {"event": ..., "data": ...}\n\n`."""
-        payload = json.dumps(
-            {"event": self.event, "data": self._data()},
-            ensure_ascii=True,
-        )
-        return f"data: {payload}\n\n"
+        """Serialize to standard SSE wire format: `event: <type>\\ndata: <payload>\\n\\n`."""
+        payload = json.dumps(self._data(), ensure_ascii=True)
+        return f"event: {self.event}\ndata: {payload}\n\n"
 
     def _data(self) -> dict[str, Any]:
         return self.model_dump(exclude={"event"})
