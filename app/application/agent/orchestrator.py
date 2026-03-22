@@ -272,7 +272,7 @@ def _extract_annotations(output_items: list[Any]) -> list[dict]:
     for item in output_items:
         if not isinstance(item, ResponseOutputMessage):
             continue
-        for block in item.content:
+        for block in item.content or []:
             for ann in getattr(block, "annotations", []):
                 if isinstance(ann, AnnotationURLCitation):
                     annotations.append({

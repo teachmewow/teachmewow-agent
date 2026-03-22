@@ -1,15 +1,25 @@
 """
 Chat service — orchestrates agent execution and message persistence.
+
+Session management: this service creates short-lived sessions internally
+rather than receiving a long-lived dependency-injected session.  This
+prevents DB connections from being held idle during the long SSE
+streaming phase (5-30 s) and avoids leaked-connection warnings when
+clients disconnect mid-stream.
 """
 
 import json
 import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain import Message, MessageRole, Thread, WowClass, WowSpec
-from app.domain.repositories import MessageRepository, ThreadRepository
+from app.infrastructure.database.repositories import (
+    MessageRepositoryImpl,
+    ThreadRepositoryImpl,
+)
 from app.infrastructure.llm.message_adapter import to_responses_api_messages
 
 from ..agent.orchestrator import Orchestrator
@@ -30,14 +40,10 @@ class ChatService:
     def __init__(
         self,
         orchestrator: Orchestrator,
-        message_repository: MessageRepository,
-        thread_repository: ThreadRepository,
-        session_commit: Any = None,
+        session_factory: async_sessionmaker[AsyncSession],
     ):
         self.orchestrator = orchestrator
-        self.message_repository = message_repository
-        self.thread_repository = thread_repository
-        self._session_commit = session_commit
+        self._session_factory = session_factory
 
     async def process_message(
         self,
@@ -61,12 +67,26 @@ class ChatService:
             "role": normalized.role,
         }
 
-        persisted_thread = await self._ensure_thread(thread_id, user_id, normalized)
-        history = await self._save_and_load_history(thread_id, input_text)
-        messages = to_responses_api_messages(history)
-        build_info = await self._resolve_build(
-            thread_id, selected_build_id, persisted_thread, char_dict,
-        )
+        # --- Phase 1: DB work (short-lived session) -----------------------
+        # Session is opened, used, committed, and closed BEFORE streaming
+        # starts.  This returns the DB connection to the pool immediately.
+        async with self._session_factory() as session:
+            msg_repo = MessageRepositoryImpl(session)
+            thread_repo = ThreadRepositoryImpl(session)
+
+            persisted_thread = await self._ensure_thread(
+                thread_repo, thread_id, user_id, normalized,
+            )
+            history = await self._save_and_load_history(
+                msg_repo, thread_id, input_text,
+            )
+            messages = to_responses_api_messages(history)
+            build_info = await self._resolve_build(
+                thread_repo, thread_id, selected_build_id,
+                persisted_thread, char_dict,
+            )
+            await session.commit()
+        # Connection returned to pool here — before any streaming.
 
         system_prompt = build_orchestrator_prompt(
             char_info=normalized,
@@ -75,12 +95,7 @@ class ChatService:
         )
         build_dict = build_info.model_dump(mode="json") if build_info else None
 
-        # Commit DB writes (thread, user message, build context) before the
-        # long-running streaming phase. Without this, the open transaction holds
-        # row locks that block subsequent requests on the same thread.
-        if self._session_commit:
-            await self._session_commit()
-
+        # --- Phase 2: streaming (no DB connection held) -------------------
         async for event_str in self._stream_and_persist(
             thread_id, messages, system_prompt, char_dict, build_dict,
         ):
@@ -92,6 +107,7 @@ class ChatService:
 
     async def _ensure_thread(
         self,
+        thread_repo: ThreadRepositoryImpl,
         thread_id: str,
         user_id: str,
         char_info: CharInfo,
@@ -104,11 +120,12 @@ class ChatService:
             wow_spec=WowSpec(char_info.spec),
             wow_role=char_info.role,
         )
-        persisted, _ = await self.thread_repository.get_or_create(thread)
+        persisted, _ = await thread_repo.get_or_create(thread)
         return persisted
 
     async def _save_and_load_history(
         self,
+        msg_repo: MessageRepositoryImpl,
         thread_id: str,
         input_text: str,
     ) -> list[Message]:
@@ -121,13 +138,14 @@ class ChatService:
             content=input_text,
             timestamp=user_timestamp,
         )
-        await self.message_repository.save(user_message)
-        return await self.message_repository.get_up_to_timestamp(
+        await msg_repo.save(user_message)
+        return await msg_repo.get_up_to_timestamp(
             thread_id, user_timestamp,
         )
 
     async def _resolve_build(
         self,
+        thread_repo: ThreadRepositoryImpl,
         thread_id: str,
         selected_build_id: str | None,
         persisted_thread: Thread,
@@ -151,10 +169,10 @@ class ChatService:
                     source=build_data.get("source"),
                     patch=build_data.get("patch"),
                 )
-                await self.thread_repository.set_active_build_id(
+                await thread_repo.set_active_build_id(
                     thread_id, selected_build_id,
                 )
-                await self.thread_repository.set_active_build_info(
+                await thread_repo.set_active_build_info(
                     thread_id, build_info.model_dump(mode="json"),
                 )
                 return build_info
@@ -196,6 +214,7 @@ class ChatService:
             except (json.JSONDecodeError, AttributeError, ValueError):
                 pass
 
+        # --- Phase 3: persist AI response (short-lived session) -----------
         if done_text:
             ai_message = Message(
                 id=str(uuid.uuid4()),
@@ -207,20 +226,19 @@ class ChatService:
                     {"annotations": annotations} if annotations else None
                 ),
             )
-            await self.message_repository.save(ai_message)
+            async with self._session_factory() as session:
+                msg_repo = MessageRepositoryImpl(session)
+                await msg_repo.save(ai_message)
+                await session.commit()
 
 
 def create_chat_service(
     orchestrator: Orchestrator,
-    message_repository: MessageRepository,
-    thread_repository: ThreadRepository,
-    session_commit: Callable[[], Awaitable[None]] | None = None,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> ChatService:
     return ChatService(
         orchestrator=orchestrator,
-        message_repository=message_repository,
-        thread_repository=thread_repository,
-        session_commit=session_commit,
+        session_factory=session_factory,
     )
 
 
