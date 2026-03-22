@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from app.domain import Message, MessageRole, Thread, WowClass, WowSpec
 from app.domain.repositories import MessageRepository, ThreadRepository
+from app.infrastructure.llm.message_adapter import to_responses_api_messages
 
 from ..agent.orchestrator import Orchestrator
 from ..agent.prompts.orchestrator_prompt import build_orchestrator_prompt
@@ -44,25 +45,65 @@ class ChatService:
         selected_build_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """Process a user message and stream the response."""
-        normalized_char_info = CharInfo(
+        normalized = CharInfo(
             **{
                 "class": char_info.wow_class,
                 "spec": char_info.spec,
                 "role": char_info.role,
             }
         )
+        char_dict = {
+            "class": normalized.wow_class,
+            "spec": normalized.spec,
+            "role": normalized.role,
+        }
 
-        # Ensure thread exists
+        persisted_thread = await self._ensure_thread(thread_id, user_id, normalized)
+        history = await self._save_and_load_history(thread_id, input_text)
+        messages = to_responses_api_messages(history)
+        build_info = await self._resolve_build(
+            thread_id, selected_build_id, persisted_thread, char_dict,
+        )
+
+        system_prompt = build_orchestrator_prompt(
+            char_info=normalized,
+            build_info=build_info,
+            skill_contents=self.orchestrator.skill_contents,
+        )
+        build_dict = build_info.model_dump(mode="json") if build_info else None
+
+        async for event_str in self._stream_and_persist(
+            thread_id, messages, system_prompt, char_dict, build_dict,
+        ):
+            yield event_str
+
+    # ------------------------------------------------------------------
+    # Private steps
+    # ------------------------------------------------------------------
+
+    async def _ensure_thread(
+        self,
+        thread_id: str,
+        user_id: str,
+        char_info: CharInfo,
+    ) -> Thread:
+        """Get or create a thread for the conversation."""
         thread = Thread(
             id=thread_id,
             user_id=user_id,
-            wow_class=WowClass(normalized_char_info.wow_class),
-            wow_spec=WowSpec(normalized_char_info.spec),
-            wow_role=normalized_char_info.role,
+            wow_class=WowClass(char_info.wow_class),
+            wow_spec=WowSpec(char_info.spec),
+            wow_role=char_info.role,
         )
-        persisted_thread, _ = await self.thread_repository.get_or_create(thread)
+        persisted, _ = await self.thread_repository.get_or_create(thread)
+        return persisted
 
-        # Save user message
+    async def _save_and_load_history(
+        self,
+        thread_id: str,
+        input_text: str,
+    ) -> list[Message]:
+        """Persist the user message and return full conversation history."""
         user_timestamp = datetime.now(timezone.utc)
         user_message = Message(
             id=str(uuid.uuid4()),
@@ -72,32 +113,25 @@ class ChatService:
             timestamp=user_timestamp,
         )
         await self.message_repository.save(user_message)
-
-        # Load conversation history
-        history = await self.message_repository.get_up_to_timestamp(
+        return await self.message_repository.get_up_to_timestamp(
             thread_id, user_timestamp,
         )
 
-        # Convert domain messages to Responses API format
-        messages = _to_responses_api_messages(history)
-
-        # Resolve build info — selected_build_id from UI takes priority
-        char_dict = {
-            "class": normalized_char_info.wow_class,
-            "spec": normalized_char_info.spec,
-            "role": normalized_char_info.role,
-        }
-
-        resolved_build_info: BuildInfo | None = None
-
+    async def _resolve_build(
+        self,
+        thread_id: str,
+        selected_build_id: str | None,
+        persisted_thread: Thread,
+        char_dict: dict,
+    ) -> BuildInfo | None:
+        """Resolve build context — UI selection takes priority over cached."""
         if selected_build_id and selected_build_id != persisted_thread.active_build_id:
-            # User selected a new build via the UI cards
             build_data = await _fetch_build(
                 build_id=selected_build_id,
                 char_info=char_dict,
             )
             if build_data:
-                resolved_build_info = BuildInfo(
+                build_info = BuildInfo(
                     build_id=build_data["build_id"],
                     import_code=build_data.get("import_code", ""),
                     wow_class=char_dict.get("class", ""),
@@ -112,31 +146,27 @@ class ChatService:
                     thread_id, selected_build_id,
                 )
                 await self.thread_repository.set_active_build_info(
-                    thread_id, resolved_build_info.model_dump(mode="json"),
+                    thread_id, build_info.model_dump(mode="json"),
                 )
-        elif isinstance(persisted_thread.active_build_info, dict):
+                return build_info
+
+        if isinstance(persisted_thread.active_build_info, dict):
             try:
-                resolved_build_info = BuildInfo.model_validate(
-                    persisted_thread.active_build_info,
-                )
+                return BuildInfo.model_validate(persisted_thread.active_build_info)
             except Exception:
-                resolved_build_info = None
+                return None
 
-        # Build system prompt with skills injected directly
-        system_prompt = build_orchestrator_prompt(
-            char_info=normalized_char_info,
-            build_info=resolved_build_info,
-            skill_contents=self.orchestrator.skill_contents,
-        )
+        return None
 
-        # Prepare build dict for tool executor
-        build_dict = (
-            resolved_build_info.model_dump(mode="json")
-            if resolved_build_info else None
-        )
-
-        # Stream via orchestrator — pass all events through to the client.
-        # Only capture the `done` event for persistence (it carries the full text).
+    async def _stream_and_persist(
+        self,
+        thread_id: str,
+        messages: list[dict],
+        system_prompt: str,
+        char_dict: dict,
+        build_dict: dict | None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream orchestrator events and persist the AI response."""
         done_text = ""
         annotations: list[dict] = []
 
@@ -160,7 +190,6 @@ class ChatService:
             except (json.JSONDecodeError, AttributeError):
                 pass
 
-        # Persist AI response from the done event
         if done_text:
             ai_message = Message(
                 id=str(uuid.uuid4()),
@@ -187,16 +216,3 @@ def create_chat_service(
     )
 
 
-def _to_responses_api_messages(messages: list[Message]) -> list[dict]:
-    """Convert domain Message objects to Responses API input format."""
-    result: list[dict] = []
-    for msg in messages:
-        if msg.role == MessageRole.HUMAN:
-            result.append({"role": "user", "content": msg.content or ""})
-        elif msg.role == MessageRole.AI:
-            result.append({"role": "assistant", "content": msg.content or ""})
-        elif msg.role == MessageRole.SYSTEM:
-            result.append({"role": "system", "content": msg.content or ""})
-        # Skip tool messages — they are part of the Responses API's
-        # internal state and not replayed as conversation history.
-    return result
