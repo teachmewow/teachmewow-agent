@@ -2,12 +2,19 @@
 FastAPI application factory.
 """
 
+import warnings
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.infrastructure.config import get_settings
 from app.lifespan import lifespan
 from app.presentation import builds_router, chat_router, threads_router
+
+# Suppress Pydantic serialization warnings from LangSmith @traceable.
+# These fire when LangSmith serializes OpenAI tool configs (web_search, shell)
+# that don't match Pydantic's expected types. Harmless but extremely noisy.
+warnings.filterwarnings("ignore", message="Pydantic serializer warnings")
 
 
 def create_app() -> FastAPI:
