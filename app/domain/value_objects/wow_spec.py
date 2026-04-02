@@ -74,6 +74,7 @@ class WowSpec(StrEnum):
     # Demon Hunter
     HAVOC = "havoc"
     VENGEANCE = "vengeance"
+    DEVOURER = "devourer"
 
     # Evoker
     DEVASTATION = "devastation"
