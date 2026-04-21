@@ -154,6 +154,17 @@ O agente usa LangGraph para orquestração:
 
 - `get_spec_info`: Retorna informações sobre uma especialização (mock)
 
+## Build ingestion
+
+A ingestão de builds (YAML -> decode do Blizzard import code -> upsert na tabela `builds`)
+vive no serviço **ai-manager**, não em `agent-core`. Consulte
+[`services/ai-manager/builds_ingestion/`](../ai-manager/builds_ingestion/)
+e o endpoint `POST /admin/builds/ingest/yaml` (porta `8002`).
+
+O `agent-core` segue lendo builds da tabela compartilhada no Postgres
+(via `GET /builds/{build_id}` e a tool `build_lookup`) — nada muda no
+caminho de leitura.
+
 ## Desenvolvimento
 
 ### Criar nova migration
