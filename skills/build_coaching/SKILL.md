@@ -1,13 +1,9 @@
 ---
 name: build-coaching
-description: Coach on rotation, priorities, cooldowns, openers, and optimization for WoW builds.
+description: Coach on rotation, priorities, cooldowns, openers, and optimization when an "Active build" section exists in the system prompt. Takes priority over builds-listing when a build is selected.
 ---
 
 # Build Coaching
-
-## Prerequisites
-An active build MUST be selected (check system prompt for "Active build" section).
-If no active build, tell the user to select one first.
 
 ## Flow
 1. ALWAYS call `web_search` before responding — NEVER fabricate advice.

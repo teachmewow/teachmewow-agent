@@ -4,7 +4,10 @@
 #
 # Reads manifest.json, finds specs with status "scraped",
 # POSTs their YAML to the ingestion endpoint, and updates
-# the manifest to "ingested" or "error".
+# the manifest based on the response:
+#   - All builds OK        → status = "ingested"
+#   - Some builds failed   → status = "scraped" (needs re-ingestion)
+#   - HTTP error           → status = "error"
 
 set -euo pipefail
 
@@ -12,6 +15,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MANIFEST="$SCRIPT_DIR/manifest.json"
 BUILDS_DIR="$SCRIPT_DIR/builds"
 API_URL="${1:-http://localhost:8000}"
+RESP_FILE=$(mktemp)
+
+cleanup() { rm -f "$RESP_FILE"; }
+trap cleanup EXIT
 
 if ! command -v jq &> /dev/null; then
   echo "Error: jq is required. Install with: brew install jq"
@@ -33,8 +40,9 @@ if [ -z "$CLASSES" ]; then
 fi
 
 TOTAL=0
-SUCCESS=0
-ERRORS=0
+CLEAN=0
+PARTIAL=0
+FAILED=0
 
 for CLASS in $CLASSES; do
   YAML_FILE="$BUILDS_DIR/$CLASS.yaml"
@@ -44,32 +52,50 @@ for CLASS in $CLASSES; do
     continue
   fi
 
-  echo "Ingesting $CLASS..."
   TOTAL=$((TOTAL + 1))
 
-  HTTP_CODE=$(curl -s -o /tmp/ingest_response.json -w "%{http_code}" \
+  HTTP_CODE=$(curl -s -o "$RESP_FILE" -w "%{http_code}" \
     -X POST "$API_URL/builds/ingest/yaml" \
     -H "Content-Type: text/yaml" \
     --data-binary "@$YAML_FILE")
 
   if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-    echo "  OK ($HTTP_CODE) — $(cat /tmp/ingest_response.json)"
-    SUCCESS=$((SUCCESS + 1))
+    INGESTED=$(jq -r '.ingested // 0' "$RESP_FILE")
+    SPECS_PROC=$(jq -r '.specs_processed // 0' "$RESP_FILE")
+    ERROR_COUNT=$(jq -r '.errors | length' "$RESP_FILE")
 
-    # Update all specs of this class from "scraped" to "ingested"
-    UPDATED=$(jq --arg cls "$CLASS" '
-      .specs |= map(
-        if .class == $cls and .status == "scraped"
-        then .status = "ingested"
-        else . end
-      ) | .last_updated = (now | todate)
-    ' "$MANIFEST")
-    echo "$UPDATED" > "$MANIFEST"
+    if [ "$ERROR_COUNT" -eq 0 ]; then
+      # Clean success — all builds ingested
+      echo "  ✓ $CLASS — $INGESTED builds ingested ($SPECS_PROC specs)"
+      CLEAN=$((CLEAN + 1))
+
+      # Mark all scraped specs of this class as "ingested"
+      UPDATED=$(jq --arg cls "$CLASS" '
+        .specs |= map(
+          if .class == $cls and .status == "scraped"
+          then .status = "ingested" | del(.error_message)
+          else . end
+        ) | .last_updated = (now | todate)
+      ' "$MANIFEST")
+      echo "$UPDATED" > "$MANIFEST"
+    else
+      # Partial success — some builds failed normalization
+      PARTIAL=$((PARTIAL + 1))
+      echo "  ⚠ $CLASS — $INGESTED builds ingested, $ERROR_COUNT failed:"
+      jq -r '.errors[]' "$RESP_FILE" | while IFS= read -r err; do
+        echo "      $err"
+      done
+
+      # Keep status as "scraped" so re-ingestion picks them up
+      echo "    → Kept as 'scraped' for re-ingestion"
+    fi
   else
-    echo "  FAILED ($HTTP_CODE) — $(cat /tmp/ingest_response.json)"
-    ERRORS=$((ERRORS + 1))
+    # HTTP-level failure
+    FAILED=$((FAILED + 1))
+    echo "  ✗ $CLASS — HTTP $HTTP_CODE"
+    cat "$RESP_FILE" 2>/dev/null | head -3
 
-    # Update all specs of this class from "scraped" to "error"
+    # Mark as error
     UPDATED=$(jq --arg cls "$CLASS" --arg err "HTTP $HTTP_CODE" '
       .specs |= map(
         if .class == $cls and .status == "scraped"
@@ -82,5 +108,7 @@ for CLASS in $CLASSES; do
 done
 
 echo ""
-echo "Done. $SUCCESS/$TOTAL classes ingested successfully. $ERRORS errors."
-rm -f /tmp/ingest_response.json
+echo "Done. $TOTAL classes processed:"
+[ "$CLEAN"   -gt 0 ] && echo "  $CLEAN fully ingested"
+[ "$PARTIAL" -gt 0 ] && echo "  $PARTIAL partially ingested (re-run to retry failed builds)"
+[ "$FAILED"  -gt 0 ] && echo "  $FAILED failed (check API)"

@@ -1,6 +1,6 @@
 {
   "patch": "11.1.0",
-  "last_updated": "2026-03-22T17:26:23Z",
+  "last_updated": "2026-03-22T18:24:37Z",
   "specs": [
     {
       "class": "warrior",
@@ -18,229 +18,229 @@
       "class": "warrior",
       "spec": "protection",
       "role": "tank",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "paladin",
       "spec": "holy",
       "role": "healer",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "paladin",
       "spec": "protection",
       "role": "tank",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "paladin",
       "spec": "retribution",
       "role": "dps",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "hunter",
       "spec": "beast-mastery",
       "role": "dps",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "hunter",
       "spec": "marksmanship",
       "role": "dps",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "hunter",
       "spec": "survival",
       "role": "dps",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "rogue",
       "spec": "assassination",
       "role": "dps",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "rogue",
       "spec": "outlaw",
       "role": "dps",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "rogue",
       "spec": "subtlety",
       "role": "dps",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "priest",
       "spec": "discipline",
       "role": "healer",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "priest",
       "spec": "holy",
       "role": "healer",
-      "status": "scraped"
+      "status": "ingested"
     },
     {
       "class": "priest",
       "spec": "shadow",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "death-knight",
       "spec": "blood",
       "role": "tank",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "death-knight",
       "spec": "frost",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "death-knight",
       "spec": "unholy",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "shaman",
       "spec": "elemental",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "shaman",
       "spec": "enhancement",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "shaman",
       "spec": "restoration",
       "role": "healer",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "mage",
       "spec": "arcane",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "mage",
       "spec": "fire",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "mage",
       "spec": "frost",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "warlock",
       "spec": "affliction",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "warlock",
       "spec": "demonology",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "warlock",
       "spec": "destruction",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "monk",
       "spec": "brewmaster",
       "role": "tank",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "monk",
       "spec": "mistweaver",
       "role": "healer",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "monk",
       "spec": "windwalker",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "druid",
       "spec": "balance",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "druid",
       "spec": "feral",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "druid",
       "spec": "guardian",
       "role": "tank",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "druid",
       "spec": "restoration",
       "role": "healer",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "demon-hunter",
       "spec": "havoc",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "demon-hunter",
       "spec": "vengeance",
       "role": "tank",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "demon-hunter",
       "spec": "devourer",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "evoker",
       "spec": "devastation",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "evoker",
       "spec": "preservation",
       "role": "healer",
-      "status": "pending"
+      "status": "ingested"
     },
     {
       "class": "evoker",
       "spec": "augmentation",
       "role": "dps",
-      "status": "pending"
+      "status": "ingested"
     }
   ]
 }

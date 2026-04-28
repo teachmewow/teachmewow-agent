@@ -2,7 +2,7 @@
 Application layer - business logic and orchestration.
 """
 
-from .agent import Orchestrator, StreamEvent
+from .agent import Orchestrator
 from .services import (
     ChatService,
     ThreadService,
@@ -12,7 +12,6 @@ from .services import (
 
 __all__ = [
     "Orchestrator",
-    "StreamEvent",
     "ChatService",
     "ThreadService",
     "create_chat_service",

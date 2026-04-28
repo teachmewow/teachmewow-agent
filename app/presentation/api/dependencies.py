@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.application.agent.orchestrator import Orchestrator
 from app.application.services import (
     ChatService,
+    RecommendationService,
     ThreadService,
     create_chat_service,
+    create_recommendation_service,
     create_thread_service,
 )
 from app.infrastructure.database import (
@@ -57,14 +59,16 @@ def get_thread_repository(
 
 def get_chat_service(
     orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
-    message_repo: Annotated[MessageRepositoryImpl, Depends(get_message_repository)],
-    thread_repo: Annotated[ThreadRepositoryImpl, Depends(get_thread_repository)],
 ) -> ChatService:
-    """Get chat service with all dependencies."""
+    """Get chat service with all dependencies.
+
+    The chat service manages its own short-lived DB sessions internally
+    so that connections are returned to the pool before the long-running
+    SSE streaming phase begins.
+    """
     return create_chat_service(
         orchestrator=orchestrator,
-        message_repository=message_repo,
-        thread_repository=thread_repo,
+        session_factory=get_session_factory(),
     )
 
 
@@ -79,7 +83,19 @@ def get_thread_service(
     )
 
 
+def get_recommendation_service(request: Request) -> RecommendationService:
+    """Get recommendation service from orchestrator's provider and skills."""
+    orchestrator = request.app.state.orchestrator
+    return create_recommendation_service(
+        provider=orchestrator._provider,
+        skill_contents=orchestrator.skill_contents,
+    )
+
+
 # Type aliases for cleaner route signatures
 DBSession = Annotated[AsyncSession, Depends(get_db_session)]
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 ThreadServiceDep = Annotated[ThreadService, Depends(get_thread_service)]
+RecommendationServiceDep = Annotated[
+    RecommendationService, Depends(get_recommendation_service)
+]

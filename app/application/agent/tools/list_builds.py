@@ -80,7 +80,9 @@ class ListBuildsHandler:
         "description": (
             "Returns ALL builds for the user's class/spec in a single call. "
             "Call with an empty object {} to get everything. "
-            "Optional filters narrow results only when the user explicitly asks."
+            "Optional filters narrow results only when the user explicitly asks. "
+            "NEVER call this tool when the system prompt already has an 'Active build' section — "
+            "the user has already chosen a build, so use web_search for coaching instead."
         ),
         "parameters": {
             "type": "object",
